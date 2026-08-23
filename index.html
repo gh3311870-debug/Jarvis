@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ARIA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080b10;
+    --bg2:#0d1219;
+    --cyan:#4ec9ff;
+    --cyan-dim:#1c4a63;
+    --amber:#ffb454;
+    --text:#dfe8ef;
+    --muted:#5c6b78;
+    --danger:#ff5f5f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{
+    margin:0; padding:0; height:100%; overflow:hidden;
+    background:radial-gradient(ellipse at 50% 20%, #0f1620 0%, var(--bg) 60%);
+    color:var(--text);
+    font-family:'Rajdhani', sans-serif;
+  }
+  .mono{font-family:'JetBrains Mono', monospace;}
+
+  #app{
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:18px 20px 4px;
+  }
+  .brand{
+    font-weight:700; letter-spacing:4px; font-size:14px; color:var(--cyan);
+  }
+  .brand span{color:var(--muted); font-weight:400; letter-spacing:2px;}
+  #gearBtn{
+    background:none; border:1px solid var(--cyan-dim); color:var(--cyan);
+    width:36px; height:36px; border-radius:8px; font-size:16px;
+  }
+
+  #stage{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:22px; padding:0 24px;
+  }
+
+  .orb-wrap{ position:relative; width:220px; height:220px; }
+  canvas#orb{ width:220px; height:220px; display:block; }
+
+  #statusText{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px; letter-spacing:3px; text-transform:uppercase; color:var(--muted);
+    min-height:16px;
+  }
+  #statusText.active{ color:var(--cyan); }
+  #statusText.error{ color:var(--danger); }
+
+  #transcript{
+    width:100%; max-width:520px;
+    max-height:22vh; overflow-y:auto;
+    font-size:15px; line-height:1.5; color:var(--text);
+    text-align:center; padding:0 8px;
+  }
+  #transcript .you{color:var(--muted); font-size:13px; margin-bottom:6px;}
+  #transcript .them{color:var(--text);}
+
+  footer{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    padding:10px 20px 28px;
+  }
+  #hint{ font-size:11px; letter-spacing:2px; color:var(--muted); font-family:'JetBrains Mono', monospace; }
+
+  #talkBtn{
+    width:84px; height:84px; border-radius:50%;
+    border:2px solid var(--cyan);
+    background:rgba(78,201,255,0.08);
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+  }
+  #talkBtn svg{ width:30px; height:30px; fill:var(--cyan); }
+  #talkBtn.recording{
+    background:rgba(255,95,95,0.12); border-color:var(--danger);
+  }
+  #talkBtn.recording svg{ fill:var(--danger); }
+  #talkBtn:active{ transform:scale(0.96); }
+
+  /* Settings panel */
+  #settings{
+    position:fixed; inset:0; background:rgba(5,7,10,0.92);
+    backdrop-filter:blur(6px);
+    display:flex; align-items:flex-end; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+    z-index:20;
+  }
+  #settings.open{ opacity:1; pointer-events:auto; }
+  .sheet{
+    width:100%; max-width:520px;
+    background:var(--bg2); border:1px solid var(--cyan-dim); border-radius:16px 16px 0 0;
+    padding:22px 22px calc(28px + env(safe-area-inset-bottom));
+    transform:translateY(20px); transition:transform .2s ease;
+  }
+  #settings.open .sheet{ transform:translateY(0); }
+  .sheet h2{ margin:0 0 4px; font-size:18px; letter-spacing:1px; }
+  .sheet p{ margin:0 0 16px; font-size:13px; color:var(--muted); line-height:1.5; }
+  .sheet label{ font-size:12px; letter-spacing:1px; color:var(--muted); display:block; margin-bottom:6px; }
+  .sheet input, .sheet select{
+    width:100%; padding:12px; margin-bottom:16px;
+    background:#0a0e14; border:1px solid #1c2733; border-radius:8px;
+    color:var(--text); font-size:14px; font-family:'JetBrains Mono', monospace;
+  }
+  .row{ display:flex; gap:10px; }
+  .row button{ flex:1; padding:14px; border-radius:8px; border:none; font-weight:600; letter-spacing:1px; font-size:14px; }
+  #saveBtn{ background:var(--cyan); color:#04212f; }
+  #closeBtn{ background:#1c2733; color:var(--text); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">A.R.I.A<span> / VOICE INTERFACE</span></div>
+    <button id="gearBtn">⚙</button>
+  </header>
+
+  <div id="stage">
+    <div class="orb-wrap"><canvas id="orb" width="220" height="220"></canvas></div>
+    <div id="statusText" class="mono">TAP TO INITIALIZE</div>
+    <div id="transcript"></div>
+  </div>
+
+  <footer>
+    <div id="hint" class="mono">HOLD TO SPEAK</div>
+    <button id="talkBtn">
+      <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+    </button>
+  </footer>
+</div>
+
+<div id="settings">
+  <div class="sheet">
+    <h2>SETUP</h2>
+    <p>Enter your free Google Gemini API key (from aistudio.google.com/app/apikey). It's stored only on this device.</p>
+    <label>API KEY</label>
+    <input id="apiKey" type="password" placeholder="AIza...">
+    <label>VOICE</label>
+    <select id="voiceSelect"></select>
+    <div class="row">
+      <button id="closeBtn">CANCEL</button>
+      <button id="saveBtn">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('orb');
+const ctx = canvas.getContext('2d');
+const statusText = document.getElementById('statusText');
+const transcriptEl = document.getElementById('transcript');
+const talkBtn = document.getElementById('talkBtn');
+const settingsPanel = document.getElementById('settings');
+const apiKeyInput = document.getElementById('apiKey');
+const voiceSelect = document.getElementById('voiceSelect');
+
+let state = 'idle'; // idle | listening | thinking | speaking | error
+let level = 0; // 0..1 audio-ish pulse
+let t = 0;
+
+function draw(){
+  t += 0.016;
+  ctx.clearRect(0,0,220,220);
+  const cx=110, cy=110;
+
+  let baseR = 58;
+  let pulse = 0;
+  let color = '#4ec9ff';
+  let rings = 3;
+
+  if(state==='idle'){ pulse = Math.sin(t*1.2)*3; color='#3a6b85'; rings=2; }
+  if(state==='listening'){ pulse = 6 + level*22; color='#4ec9ff'; rings=4; }
+  if(state==='thinking'){ pulse = 5 + Math.sin(t*6)*5; color='#ffb454'; rings=3; }
+  if(state==='speaking'){ pulse = 6 + Math.abs(Math.sin(t*8))*14; color='#7fffd4'; rings=4; }
+  if(state==='error'){ pulse = 4; color='#ff5f5f'; rings=2; }
+
+  // core glow
+  const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,baseR+pulse+20);
+  grad.addColorStop(0, color+'aa');
+  grad.addColorStop(0.5, color+'33');
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(cx,cy,baseR+pulse+20,0,7); ctx.fill();
+
+  // core
+  ctx.beginPath();
+  ctx.arc(cx,cy,baseR*0.5+pulse*0.4,0,7);
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.85;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // rotating rings
+  for(let i=0;i<rings;i++){
+    const r = baseR + i*14 + pulse*0.6;
+    ctx.beginPath();
+    const rot = t*(0.3+i*0.15)*(i%2===0?1:-1);
+    const segs = 5+i;
+    for(let s=0;s<segs;s++){
+      const a0 = rot + (s/segs)*Math.PI*2;
+      const a1 = a0 + (Math.PI*2/segs)*0.6;
+      ctx.moveTo(cx+Math.cos(a0)*r, cy+Math.sin(a0)*r);
+      ctx.arc(cx,cy,r,a0,a1);
+    }
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.5 - i*0.08;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+
+function setState(s, msg){
+  state = s;
+  statusText.textContent = msg;
+  statusText.className = 'mono' + (s==='error' ? ' error' : (s!=='idle' ? ' active' : ''));
+}
+
+// ---- Settings persistence ----
+function loadKey(){ return localStorage.getItem('aria_api_key') || ''; }
+function saveKey(k){ localStorage.setItem('aria_api_key', k); }
+
+document.getElementById('gearBtn').onclick = ()=>{
+  apiKeyInput.value = loadKey();
+  populateVoices();
+  settingsPanel.classList.add('open');
+};
+document.getElementById('closeBtn').onclick = ()=> settingsPanel.classList.remove('open');
+document.getElementById('saveBtn').onclick = ()=>{
+  saveKey(apiKeyInput.value.trim());
+  localStorage.setItem('aria_voice', voiceSelect.value);
+  settingsPanel.classList.remove('open');
+  setState('idle', loadKey() ? 'READY' : 'API KEY REQUIRED');
+};
+
+function populateVoices(){
+  const voices = speechSynthesis.getVoices();
+  voiceSelect.innerHTML = '';
+  voices.forEach((v,i)=>{
+    const opt = document.createElement('option');
+    opt.value = i; opt.textContent = `${v.name} (${v.lang})`;
+    voiceSelect.appendChild(opt);
+  });
+  const saved = localStorage.getItem('aria_voice');
+  if(saved) voiceSelect.value = saved;
+}
+speechSynthesis.onvoiceschanged = populateVoices;
+
+// ---- Speech recognition (push to talk) ----
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let recognizing = false;
+
+if(SR){
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (e)=>{
+    const text = e.results[0][0].transcript;
+    addTranscript('you', text);
+    askGemini(text);
+  };
+  recognition.onerror = (e)=>{
+    setState('error', 'MIC ERROR: ' + e.error);
+  };
+  recognition.onend = ()=>{
+    recognizing = false;
+    talkBtn.classList.remove('recording');
+    if(state==='listening') setState('idle', 'READY');
+  };
+} else {
+  setState('error', 'SPEECH NOT SUPPORTED');
+}
+
+function addTranscript(who, text){
+  const div = document.createElement('div');
+  div.className = who;
+  div.textContent = (who==='you' ? '> ' : '') + text;
+  transcriptEl.appendChild(div);
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  while(transcriptEl.children.length > 6){ transcriptEl.removeChild(transcriptEl.firstChild); }
+}
+
+function startListening(){
+  if(!recognition) return;
+  const key = loadKey();
+  if(!key){ setState('error', 'ADD API KEY IN SETTINGS'); return; }
+  if(speechSynthesis.speaking) speechSynthesis.cancel();
+  try{
+    recognition.start();
+    recognizing = true;
+    talkBtn.classList.add('recording');
+    setState('listening', 'LISTENING...');
+    let pulseTimer = setInterval(()=>{ level = Math.random(); if(!recognizing) clearInterval(pulseTimer); }, 100);
+  }catch(err){ /* already started */ }
+}
+function stopListening(){
+  if(recognition && recognizing){ recognition.stop(); }
+}
+
+talkBtn.addEventListener('touchstart', (e)=>{ e.preventDefault(); startListening(); }, {passive:false});
+talkBtn.addEventListener('touchend', (e)=>{ e.preventDefault(); stopListening(); }, {passive:false});
+talkBtn.addEventListener('mousedown', startListening);
+talkBtn.addEventListener('mouseup', stopListening);
+
+// ---- Gemini API call (free tier) ----
+async function askGemini(userText){
+  setState('thinking', 'THINKING...');
+  const key = loadKey();
+  try{
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        systemInstruction:{ parts:[{ text:'You are ARIA, a concise voice assistant. Keep answers short and spoken-friendly (1-3 sentences) unless asked for detail.' }] },
+        contents:[{ role:'user', parts:[{ text:userText }] }]
+      })
+    });
+    const data = await res.json();
+    if(data.error){ throw new Error(data.error.message || 'API error'); }
+    const reply = (data.candidates?.[0]?.content?.parts?.map(p=>p.text).join(' ') || '').trim();
+    if(!reply) throw new Error('empty response');
+    addTranscript('them', reply);
+    speak(reply);
+  }catch(err){
+    setState('error', 'ERROR: ' + err.message);
+  }
+}
+
+function speak(text){
+  setState('speaking', 'SPEAKING...');
+  const utter = new SpeechSynthesisUtterance(text);
+  const voices = speechSynthesis.getVoices();
+  const savedIdx = localStorage.getItem('aria_voice');
+  if(savedIdx && voices[savedIdx]) utter.voice = voices[savedIdx];
+  utter.rate = 1.0;
+  utter.onend = ()=> setState('idle', 'READY');
+  speechSynthesis.speak(utter);
+}
+
+// init
+setState('idle', loadKey() ? 'READY' : 'TAP ⚙ TO ADD API KEY');
+</script>
+</body>
+</html>
