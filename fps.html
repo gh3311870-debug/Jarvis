@@ -249,6 +249,9 @@ body.touch #audio-note{margin-top:12px;font-size:10px;letter-spacing:2px}
 <div id="pause">
   <h2>PAUSED</h2>
   <div class="stats" id="pause-stats"></div>
+  <label class="slider" style="align-items:center;text-align:center">LOOK SENSITIVITY
+    <input type="range" id="sens2" min="2" max="60" value="18">
+  </label>
   <div class="btn" id="resume-btn">RESUME</div>
   <div class="btn" id="quit-btn">ABORT TO MENU</div>
 </div>
@@ -295,7 +298,7 @@ body.touch #audio-note{margin-top:12px;font-size:10px;letter-spacing:2px}
     <b>BUTTONS</b> fire · ads · reload · crouch · jump · focus
   </div>
   <div class="sliders">
-    <label class="slider">SENSITIVITY <input type="range" id="sens" min="2" max="40" value="14"></label>
+    <label class="slider">SENSITIVITY <input type="range" id="sens" min="2" max="60" value="14"></label>
     <label class="slider">FIELD OF VIEW <input type="range" id="fov" min="65" max="110" value="85"></label>
     <label class="slider">VOLUME <input type="range" id="vol" min="0" max="100" value="80"></label>
   </div>
@@ -1200,7 +1203,11 @@ const WEAPONS = {
 const WKEYS = ['rifle','smg','pistol','sniper'];
 
 /* ---- viewmodel construction ---------------------------------------------- */
-function cyl(r1,r2,h,seg,mat){ const m=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,seg||14),mat); return m; }
+function cyl(r1,r2,h,seg,mat,open){
+  return new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,seg||14,1,!!open), mat);
+}
+// optic housings are hollow and visible from the inside
+const MAT_OPTIC = new THREE.MeshStandardMaterial({color:0x16181a, roughness:0.55, metalness:0.55, side:THREE.DoubleSide});
 function bx(w,h,d,mat){ return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); }
 function put(m,x,y,z,rx,ry,rz){ m.position.set(x,y,z); if(rx||ry||rz) m.rotation.set(rx||0,ry||0,rz||0); return m; }
 
@@ -1232,10 +1239,15 @@ function buildWeaponModel(kind){
     add(put(bx(0.03,0.012,0.05, D), 0,-0.045,-0.012));                      // trigger guard
     // optic: tube + mount + glass
     const mnt = add(put(bx(0.035,0.045,0.06, D), 0,0.112,-0.12));
-    const tube = add(put(cyl(0.023,0.023,0.10,18,D), 0,0.148,-0.13, Math.PI/2,0,0));
-    const glass = add(put(cyl(0.0205,0.0205,0.004,18,MAT.glass), 0,0.148,-0.178, Math.PI/2,0,0));
-    parts.dot = add(put(new THREE.Mesh(new THREE.SphereGeometry(0.0022,8,8),
-      new THREE.MeshBasicMaterial({color:0xff2a1a})), 0,0.148,-0.172));
+    add(put(cyl(0.023,0.023,0.10,18,MAT_OPTIC,true), 0,0.148,-0.13, Math.PI/2,0,0));   // hollow tube
+    add(put(cyl(0.0252,0.0252,0.016,18,MAT_OPTIC,true), 0,0.148,-0.176, Math.PI/2,0,0)); // front bezel
+    add(put(cyl(0.0252,0.0252,0.014,18,MAT_OPTIC,true), 0,0.148,-0.084, Math.PI/2,0,0)); // rear bezel
+    add(put(cyl(0.0205,0.0205,0.003,18,MAT.glass), 0,0.148,-0.172, Math.PI/2,0,0));
+    parts.dot = add(put(new THREE.Mesh(new THREE.SphereGeometry(0.0034,10,10),
+      new THREE.MeshBasicMaterial({color:0xff2a1a})), 0,0.148,-0.168));
+    parts.dotGlow = add(put(new THREE.Mesh(new THREE.PlaneGeometry(0.014,0.014),
+      new THREE.MeshBasicMaterial({color:0xff3a22, transparent:true, opacity:0.5,
+        blending:THREE.AdditiveBlending, depthWrite:false})), 0,0.148,-0.166));
     parts.sight = new THREE.Vector3(0,0.148,-0.13);
     parts.muzzlePos = new THREE.Vector3(0,0.016, (kind==='smg'? -0.62 : -0.96));
     parts.ejectPos  = new THREE.Vector3(0.045,0.03,-0.06);
@@ -1265,9 +1277,9 @@ function buildWeaponModel(kind){
     parts.boltKnob = add(put(new THREE.Mesh(new THREE.SphereGeometry(0.014,10,10), MAT.steel), 0.10,0.0,0.085));
     // scope
     add(put(bx(0.03,0.05,0.05, D), 0,0.085,-0.14)); add(put(bx(0.03,0.05,0.05, D), 0,0.085,0.02));
-    add(put(cyl(0.026,0.026,0.30,20,D), 0,0.118,-0.07, Math.PI/2,0,0));
-    add(put(cyl(0.036,0.036,0.06,20,D), 0,0.118,-0.235, Math.PI/2,0,0));    // objective bell
-    add(put(cyl(0.030,0.030,0.05,20,D), 0,0.118,0.085, Math.PI/2,0,0));     // ocular
+    add(put(cyl(0.026,0.026,0.30,20,MAT_OPTIC,true), 0,0.118,-0.07, Math.PI/2,0,0));
+    add(put(cyl(0.036,0.036,0.06,20,MAT_OPTIC,true), 0,0.118,-0.235, Math.PI/2,0,0));   // objective bell
+    add(put(cyl(0.030,0.030,0.05,20,MAT_OPTIC,true), 0,0.118,0.085, Math.PI/2,0,0));    // ocular
     add(put(cyl(0.0335,0.0335,0.004,20,MAT.glass), 0,0.118,-0.263, Math.PI/2,0,0));
     parts.sight = new THREE.Vector3(0,0.118,-0.07);
     parts.muzzlePos = new THREE.Vector3(0,0.02,-0.84);
@@ -2213,7 +2225,10 @@ function updateWeapon(dt){
     p.bolt.position.z = 0.03 + travel; p.boltHandle.position.z = 0.075 + travel; p.boltKnob.position.z = 0.085 + travel;
   }
   // red dot brightness flicker
-  if(p.dot) p.dot.material.color.setHSL(0.01, 1, 0.5 + Math.sin(performance.now()*0.02)*0.04);
+  if(p.dot){
+    p.dot.material.color.setHSL(0.01, 1, 0.52 + Math.sin(performance.now()*0.02)*0.05);
+    if(p.dotGlow) p.dotGlow.material.opacity = 0.42 + Math.sin(performance.now()*0.02)*0.08;
+  }
 
   if(weapon.needBolt && game.time > weapon.boltEnd) weapon.needBolt = false;
 }
@@ -2740,6 +2755,7 @@ function pause(on){
   if(on){
     touch.fire = false; touch.moveX = touch.moveY = 0;
     const acc = game.shotsFired? Math.round(100*game.hits/Math.max(1,game.shotsFired)) : 0;
+    $('#sens2').value = Math.round(settings.sens*100);
     $('#pause-stats').innerHTML =
       `MODE ${game.mode==='asmr'?'THE RANGE':'CONTACT'} · SCORE ${game.score}<br>`+
       `KILLS ${game.kills} · TARGETS HIT ${game.hits} · ROUNDS FIRED ${game.shotsFired}`;
@@ -2749,6 +2765,10 @@ function pause(on){
     if(!isTouch) renderer.domElement.requestPointerLock();
   }
 }
+$('#sens2').oninput = e=>{
+  settings.sens = parseInt(e.target.value,10)/100;
+  $('#sens').value = e.target.value;
+};
 $('#resume-btn').onclick = ()=>pause(false);
 $('#quit-btn').onclick = ()=>{
   game.running=false; game.paused=false; game.menu=true;
@@ -2815,9 +2835,9 @@ const STICK_R = 52;                 // px travel before the stick is fully defle
 let moveTouch = null, lookTouch = null;
 
 function touchLook(dx, dy){
-  // same pipeline as the mouse, just a fatter multiplier for thumbs
-  mouse.dx += dx * 1.55;
-  mouse.dy += dy * 1.55;
+  // same pipeline as the mouse, but a thumb drags far fewer pixels than a mouse reports
+  mouse.dx += dx * 11;
+  mouse.dy += dy * 11;
 }
 function setStick(px, py){
   const dx = px - moveTouch.ox, dy = py - moveTouch.oy;
@@ -3021,7 +3041,8 @@ addEventListener('orientationchange', ()=>{
 if(isTouch){
   document.body.classList.add('touch');
   // no pointer lock on a phone — the touch layer is the input
-  settings.sens = 0.13;
+  settings.sens = 0.18;
+  $('#sens').value = 18;
 }
 
 /* ---- adaptive resolution: hold the frame rate on a phone ------------------ */
