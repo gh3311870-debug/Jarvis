@@ -17,7 +17,7 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:#000;color:var(--steel);font-family:'Rajdhani',system-ui,sans-serif;cursor:default}
-canvas{display:block;position:fixed;inset:0;z-index:0}
+body > canvas{display:block;position:fixed;inset:0;width:100%!important;height:100%!important;z-index:0}
 .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
 
 /* ---------- HUD ---------- */
@@ -746,8 +746,8 @@ const foley = new Foley();
    2. RENDERER / SCENE / PROCEDURAL TEXTURES
    ========================================================================== */
 const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.25 : 2));
-renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight, false);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
@@ -1583,11 +1583,29 @@ document.addEventListener('pointerlockchange', ()=>{
   pointerLocked = document.pointerLockElement === renderer.domElement;
   if(!isTouch && !pointerLocked && game.running && !game.menu) pause(true);
 });
-addEventListener('resize', ()=>{
-  camera.aspect = vmCamera.aspect = innerWidth/innerHeight;
+let fitW = 0, fitH = 0;
+function fitViewport(force){
+  const vv = window.visualViewport;
+  const w = Math.max(1, Math.round(vv ? vv.width  : innerWidth));
+  const h = Math.max(1, Math.round(vv ? vv.height : innerHeight));
+  if(!force && w === fitW && h === fitH) return;
+  fitW = w; fitH = h;
+  camera.aspect = vmCamera.aspect = w/h;
   camera.updateProjectionMatrix(); vmCamera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+  renderer.setSize(w, h, false);          // CSS keeps the canvas full-bleed
+}
+// phones report stale dimensions right after a rotation or a fullscreen change,
+// so re-measure a few times instead of trusting the first event
+function refit(){ fitViewport(); [60,180,400,800].forEach(ms=>setTimeout(fitViewport, ms)); }
+addEventListener('resize', refit);
+addEventListener('orientationchange', refit);
+document.addEventListener('fullscreenchange', refit);
+document.addEventListener('webkitfullscreenchange', refit);
+if(window.visualViewport){
+  visualViewport.addEventListener('resize', refit);
+  visualViewport.addEventListener('scroll', fitViewport);
+}
+fitViewport(true);
 
 /* ============================================================================
    7. PLAYER
@@ -3007,14 +3025,19 @@ if(isTouch){
 }
 
 /* ---- adaptive resolution: hold the frame rate on a phone ------------------ */
-const perf = {acc:0, n:0, scale: isTouch? 1.0 : Math.min(devicePixelRatio,2), max: Math.min(devicePixelRatio, isTouch?1.25:2)};
+const perf = {
+  acc:0, n:0,
+  scale: Math.min(devicePixelRatio, isTouch? 1.5 : 2),
+  max:   Math.min(devicePixelRatio, 2),
+  min:   Math.min(devicePixelRatio, 1)      // one drawing pixel per CSS pixel, never softer
+};
 function perfTick(dtReal){
   perf.acc += dtReal; perf.n++;
   if(perf.n < 45) return;
   const avg = perf.acc/perf.n; perf.acc = 0; perf.n = 0;
   const before = perf.scale;
-  if(avg > 1/42) perf.scale = Math.max(0.55, perf.scale - 0.1);
-  else if(avg < 1/57) perf.scale = Math.min(perf.max, perf.scale + 0.05);
+  if(avg > 1/36) perf.scale = Math.max(perf.min, perf.scale - 0.15);
+  else if(avg < 1/55) perf.scale = Math.min(perf.max, perf.scale + 0.1);
   if(Math.abs(perf.scale-before) > 0.001) renderer.setPixelRatio(perf.scale);
 }
 
@@ -3027,6 +3050,9 @@ function frameLoop(now){
   requestAnimationFrame(frameLoop);
   let dtReal = (now-last)/1000; last = now;
   dtReal = Math.min(dtReal, 0.05);
+  // both of these can reallocate the drawing buffer — they must run before the render
+  if((frame & 7) === 0) fitViewport();
+  perfTick(dtReal);
   const dt = dtReal * (game.running && !game.paused ? game.timeScale : 0);
 
   if(dt>0){
@@ -3063,7 +3089,6 @@ function frameLoop(now){
   renderer.clearDepth();
   renderer.render(vmScene, vmCamera);
 
-  perfTick(dtReal);
   if(frame++ === 1) $('#loading').className='hidden';
 }
 
