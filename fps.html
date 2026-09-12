@@ -163,10 +163,10 @@ body.touch #killfeed{font-size:11px;right:calc(84px + env(safe-area-inset-right)
   border-left:4px solid transparent;border-right:4px solid transparent;
   border-bottom:5px solid rgba(255,255,255,.45)}
 #t-guns{position:absolute;pointer-events:none;right:calc(196px + env(safe-area-inset-right));
-  bottom:calc(160px + env(safe-area-inset-bottom));display:flex;flex-direction:column-reverse;gap:6px;
+  bottom:calc(160px + env(safe-area-inset-bottom));display:flex;flex-direction:column-reverse;gap:5px;
   opacity:0;transform:translateY(8px);transition:opacity .12s,transform .12s}
 #t-guns.open{opacity:1;transform:translateY(0)}
-.tgun{pointer-events:none;width:82px;padding:8px 0;border:1px solid rgba(255,255,255,.3);border-radius:7px;
+.tgun{pointer-events:none;width:80px;padding:6px 0;border:1px solid rgba(255,255,255,.3);border-radius:7px;
   background:rgba(10,14,20,.66);color:rgba(255,255,255,.85);font-size:11px;letter-spacing:1px;
   text-align:center;font-weight:600;backdrop-filter:blur(3px)}
 #t-guns.open .tgun{pointer-events:auto}
@@ -250,6 +250,7 @@ body.touch #audio-note{margin-top:12px;font-size:10px;letter-spacing:2px}
     <div class="tgun" data-gun="pistol">P226</div>
     <div class="tgun" data-gun="sniper">M700</div>
     <div class="tgun" data-gun="laser" style="border-color:rgba(120,210,255,.5);color:#8fd8ff">DEW</div>
+    <div class="tgun" data-gun="rpg" style="border-color:rgba(255,140,90,.5);color:#ffb08f">RPG-7</div>
   </div>
 </div>
 
@@ -293,7 +294,7 @@ body.touch #audio-note{margin-top:12px;font-size:10px;letter-spacing:2px}
     <div>
       <div class="k"><b>MOUSE 2</b> aim down sight</div>
       <div class="k"><b>R</b> reload</div>
-      <div class="k"><b>1-5 / Q</b> weapons</div>
+      <div class="k"><b>1-6 / Q</b> weapons</div>
       <div class="k"><b>B</b> fire selector</div>
       <div class="k"><b>V</b> inspect weapon</div>
     </div>
@@ -782,18 +783,84 @@ class Foley {
     this.tone(d,t,900,0.10,0.12,'sine',300);
     this.clack(pos,{gain:0.5,freq:1400});
   }
-  setSlow(on){
-    if(!this.ready) return;
-    const t=this.now();
+  postFilter(){
     if(this.slowLP===undefined){
       this.slowLP = this.ctx.createBiquadFilter();
       this.slowLP.type='lowpass'; this.slowLP.frequency.value=20000; this.slowLP.Q.value=0.6;
-      // insert between dry and master
       try{ this.dry.disconnect(); }catch(e){}
       this.dry.connect(this.slowLP); this.slowLP.connect(this.master);
     }
-    this.slowLP.frequency.cancelScheduledValues(t);
-    this.slowLP.frequency.setTargetAtTime(on?1600:20000, t, 0.12);
+    return this.slowLP;
+  }
+  setSlow(on){
+    if(!this.ready) return;
+    const t=this.now(), f=this.postFilter();
+    this.slowOn = on;
+    f.frequency.cancelScheduledValues(t);
+    f.frequency.setTargetAtTime(on?1600:20000, t, 0.12);
+  }
+  // a blast going off next to you: everything goes muffled and your ears ring
+  concuss(k){
+    if(!this.ready) return;
+    const t=this.now(), ctx=this.ctx, f=this.postFilter();
+    k = clamp(k,0,1);
+    f.frequency.cancelScheduledValues(t);
+    f.frequency.setValueAtTime(Math.max(260, 1400 - k*1100), t);
+    f.frequency.setTargetAtTime(this.slowOn?1600:20000, t+0.25, 1.4 + k*1.6);
+    // tinnitus
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(3600 + Math.random()*1400, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05*k, t+0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.5 + k*3.5);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + 6.5);
+  }
+  // launcher: igniter, motor, backblast
+  rocketLaunch(pos){
+    if(!this.ready) return; const t=this.now();
+    const d=this.bus(pos,{room:1.0,air:0.7,ref:3}); d.gain.value=1.0;
+    this.noiseBurst(d,t,0.05,0.9,'bandpass',900,0.8,300);        // igniter crack
+    this.tone(d,t,150,0.22,0.7,'triangle',48);                    // pressure
+    this.noiseBurst(d,t+0.01,0.55,0.6,'lowpass',1400,0.7,320);    // motor roar
+    this.noiseBurst(d,t+0.02,0.9,0.3,'highpass',2200,0.6);        // backblast hiss
+    this.tone(d,t+0.05,90,0.5,0.35,'sine',40);
+  }
+  rocketFlight(pos){
+    if(!this.ready) return; const t=this.now();
+    const d=this.bus(pos,{room:0.4,air:0.5,ref:6,rolloff:0.7}); d.gain.value=0.5;
+    this.noiseBurst(d,t,0.18,0.5,'bandpass',rand(1200,2000),1.1,700);
+  }
+  // high explosive
+  explosion(pos, near){
+    if(!this.ready) return; const t=this.now();
+    const d=this.bus(pos,{room:1.4,air:1.4,ref:6,rolloff:0.4}); d.gain.value=1.0;
+    this.noiseBurst(d,t,0.03,1.2,'highpass',3000,0.7);            // detonation crack
+    this.noiseBurst(d,t,0.14,1.1,'bandpass',700,0.6,180);         // blast front
+    this.tone(d,t,110,0.55,0.95,'triangle',28);                   // body
+    this.tone(d,t+0.01,58,0.9,0.7,'sine',22);                     // sub
+    this.noiseBurst(d,t+0.04,1.5,0.4,'lowpass',520,0.5,130);      // rolling tail
+    for(let i=0;i<12;i++)                                          // debris raining down
+      this.noiseBurst(d, t+rand(0.25,1.5), rand(0.02,0.06), rand(0.05,0.2),
+        'bandpass', rand(600,3000), rand(2,7));
+    setTimeout(()=>{ if(this.ready) this.distantShot(pos); }, 260 + Math.random()*160);
+    if(near) this.concuss(near);
+  }
+  // a body coming apart
+  gib(pos){
+    if(!this.ready) return; const t=this.now();
+    const d=this.bus(pos,{room:1.0,ref:2}); d.gain.value=0.9;
+    this.noiseBurst(d,t,0.18,0.9,'lowpass',rand(600,900),0.8,180);
+    this.tone(d,t,rand(70,100),0.22,0.5,'sine',34);
+    for(let i=0;i<6;i++)
+      this.noiseBurst(d, t+rand(0,0.25), rand(0.04,0.12), rand(0.15,0.4),'bandpass', rand(300,1400), 1.4);
+  }
+  // wet impact of a piece landing
+  splat(pos, k){
+    if(!this.ready) return; const t=this.now();
+    const d=this.bus(pos,{room:0.9,ref:1.6}); d.gain.value=0.5*(k||1);
+    this.noiseBurst(d,t,0.09,0.7,'lowpass',rand(500,900),0.9,220);
+    this.tone(d,t,rand(60,110),0.10,0.3,'sine',40);
   }
   // Wind bed + insect shimmer. Runs forever, very quietly.
   startAmbience(){
@@ -1569,6 +1636,14 @@ const WEAPONS = {
     reload:{tac:1.4, empty:1.4}, ejects:false, beam:true, weight:1.25,
     dps:135, heatRate:0.30, coolRate:0.40, ammoName:'FUSION CELL'
   },
+  rpg: {
+    name:'RPG-7 LAUNCHER', cal:2.2, rpm:40, mag:1, reserve:6, dmg:0, headMul:1, limbMul:1,
+    modes:['SINGLE'], adsTime:0.34, adsFov:44,
+    recoil:{v:5.2, h:1.5, vm:0.20, cam:3.4, recover:5},
+    spread:{hip:2.6, ads:0.3, move:1.6, jump:3, crouch:-0.4, bloom:0, decay:6},
+    reload:{tac:3.6, empty:3.6}, ejects:false, rocket:true, weight:1.9,
+    blast:{radius:8.5, dmg:260}, ammoName:'PG-7 HEAT'
+  },
   sniper: {
     name:'M700 PRECISION', cal:1.45, rpm:48, mag:5, reserve:40, dmg:150, headMul:2.0, limbMul:0.9,
     modes:['BOLT'], adsTime:0.36, adsFov:16,
@@ -1578,7 +1653,7 @@ const WEAPONS = {
     ammoName:'7.62×51'
   }
 };
-const WKEYS = ['rifle','smg','pistol','sniper','laser'];
+const WKEYS = ['rifle','smg','pistol','sniper','laser','rpg'];
 
 /* ---- viewmodel construction ---------------------------------------------- */
 function cyl(r1,r2,h,seg,mat,open){
@@ -1642,6 +1717,41 @@ function buildWeaponModel(kind){
     parts.sight = new THREE.Vector3(0,0.066,-0.09);
     parts.muzzlePos = new THREE.Vector3(0,0.03,-0.21);
     parts.ejectPos  = new THREE.Vector3(0.03,0.05,-0.02);
+  }
+  else if(kind==='rpg'){
+    const TUBE = new THREE.MeshStandardMaterial({color:C(0x3b4038), roughness:0.72, metalness:0.45});
+    const WOOD = new THREE.MeshStandardMaterial({map:TEX.wood, bumpMap:TEX.wood, bumpScale:0.02,
+      color:C(0x9a7c52), roughness:0.85, metalness:0.02});
+    const WAR  = new THREE.MeshStandardMaterial({color:C(0x4a4a3c), roughness:0.6, metalness:0.35});
+    add(put(cyl(0.042,0.042,0.86,16,TUBE,true), 0,0,-0.20, Math.PI/2,0,0));       // launch tube
+    add(put(cyl(0.042,0.075,0.16,16,TUBE,true), 0,0,0.29, -Math.PI/2,0,0));       // venturi flare
+    add(put(cyl(0.050,0.050,0.12,16,TUBE), 0,0,-0.02, Math.PI/2,0,0));            // mid band
+    add(put(cyl(0.056,0.056,0.20,16,WOOD), 0,0,-0.30, Math.PI/2,0,0));            // heat shield
+    add(put(cyl(0.056,0.056,0.16,16,WOOD), 0,0,0.10, Math.PI/2,0,0));
+    // PG-7 warhead riding out the front
+    parts.warhead = new THREE.Group();
+    const wh = parts.warhead;
+    wh.add(put(cyl(0.020,0.020,0.30,14,WAR), 0,0,0.08, Math.PI/2,0,0));           // motor tube
+    wh.add(put(cyl(0.020,0.046,0.10,16,WAR), 0,0,-0.12, Math.PI/2,0,0));          // shoulder
+    wh.add(put(cyl(0.046,0.046,0.10,16,WAR), 0,0,-0.22, Math.PI/2,0,0));          // bulb
+    wh.add(put(cyl(0.046,0.012,0.14,16,WAR), 0,0,-0.34, Math.PI/2,0,0));          // ogive
+    wh.add(put(cyl(0.010,0.006,0.06,10,MAT.gunDark), 0,0,-0.44, Math.PI/2,0,0));  // fuze probe
+    wh.position.set(0,0,-0.62);
+    add(wh);
+    add(put(bx(0.05,0.115,0.08, MAT.polymer), 0,-0.10,0.03, 0.30));               // pistol grip
+    add(put(bx(0.008,0.028,0.03, MAT.gunDark), 0,-0.055,-0.03));                  // trigger
+    add(put(bx(0.03,0.05,0.06, MAT.gunDark), 0,-0.048,-0.03));                    // trigger guard
+    add(put(bx(0.042,0.10,0.06, WOOD), 0,-0.085,-0.34, -0.18));                   // fore grip
+    // PGO-7 optic, offset to the left as on the real launcher
+    add(put(bx(0.035,0.06,0.05, MAT.gunDark), -0.045,0.045,-0.10));
+    add(put(cyl(0.026,0.026,0.16,16,MAT_OPTIC,true), -0.062,0.088,-0.10, Math.PI/2,0,0));
+    add(put(cyl(0.0235,0.0235,0.003,16,MAT.glass), -0.062,0.088,-0.176, Math.PI/2,0,0));
+    parts.dot = add(put(new THREE.Mesh(new THREE.SphereGeometry(0.0028,10,10),
+      new THREE.MeshBasicMaterial({color:0xff5a2a})), -0.062,0.088,-0.172));
+    parts.sight = new THREE.Vector3(-0.062,0.088,-0.10);
+    parts.muzzlePos = new THREE.Vector3(0,0,-0.78);
+    parts.ventPos   = new THREE.Vector3(0,0,0.40);        // backblast comes out here
+    parts.ejectPos  = new THREE.Vector3(0.05,0.03,0);
   }
   else if(kind==='laser'){
     const HOT = new THREE.MeshBasicMaterial({color:0xffb347});           // emitter glow
@@ -2341,6 +2451,18 @@ function updatePlayer(dt){
   camera.rotation.x = player.pitch + player.recoilPitch*0.017453 + breathe;
   camera.rotation.z = lerp(camera.rotation.z, -strafe*0.012*lerp(1,0.35,aim.ads) + Math.sin(player.bobPhase*0.5)*0.008*player.bobAmp, 1-Math.exp(-8*dt));
 
+  // blast shake — decays fast, never touches where you are actually aiming
+  player.trauma = Math.max(0, (player.trauma||0) - dt*0.85);
+  const tr = player.trauma*player.trauma;
+  if(tr > 0.0004){
+    const tt = performance.now()*0.001;
+    camera.rotation.x += (Math.sin(tt*37.1)+Math.sin(tt*61.7))*0.024*tr;
+    camera.rotation.y += (Math.sin(tt*43.3)+Math.sin(tt*71.9))*0.024*tr;
+    camera.rotation.z += Math.sin(tt*53.7)*0.06*tr;
+    camera.position.x += Math.sin(tt*67.3)*0.06*tr;
+    camera.position.y += Math.sin(tt*59.1)*0.06*tr;
+  }
+
   // health regen (COD-style, delayed)
   if(game.time - player.lastHurt > 5.5 && player.hp < 100 && player.hp > 0){
     player.hp = Math.min(100, player.hp + dt*22);
@@ -2380,6 +2502,7 @@ function equip(key, instant){
   weapon.slideBack = (key==='pistol' && W().ammo===0);
   const p = weapon.model.userData;
   if(p.mag) p.mag.visible = true;
+  if(p.warhead) p.warhead.visible = W().ammo > 0;
   updateHUDWeapon();
   if(isTouch) syncGunButtons();
   if(!instant){
@@ -2442,6 +2565,8 @@ function fire(){
   game.shotsFired++;
   weapon.nextShot = Math.max(game.time, weapon.nextShot) + 60/d.rpm;
   weapon.lastShot = game.time;
+
+  if(d.rocket){ fireRocket(d); updateHUDAmmo(); return; }
 
   // --- audio
   foley.shot(null, {cal:d.cal, suppressed:d.suppressed, gain:1});
@@ -2514,6 +2639,45 @@ function fire(){
   updateHUDAmmo();
 }
 
+function fireRocket(d){
+  const p = weapon.model.userData;
+  const mLocal = p.muzzlePos.clone().applyMatrix4(weapon.model.matrix);
+  const mWorld = vmToWorld(mLocal);
+  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  const spreadRad = currentSpread()*0.017453*0.5;
+  if(spreadRad>0.0001){
+    const a=Math.random()*TAU, r=Math.sqrt(Math.random())*spreadRad;
+    const rightV = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+    const upV = new THREE.Vector3(0,1,0).applyQuaternion(camera.quaternion);
+    dir.addScaledVector(rightV, Math.cos(a)*r).addScaledVector(upV, Math.sin(a)*r).normalize();
+  }
+  launchRocket(mWorld.clone().addScaledVector(dir, 0.45), dir);
+  foley.rocketLaunch(null);
+  muzzleFlash(mLocal, mWorld, 2.2);
+  if(p.warhead) p.warhead.visible = false;             // tube is empty now
+
+  // backblast out of the venturi, behind and below the shooter
+  const back = dir.clone().negate();
+  const vent = camera.position.clone().addScaledVector(back, 0.5).add(new THREE.Vector3(0,-0.25,0));
+  for(let i=0;i<(isTouch?12:22);i++)
+    smokeFX.spawn(vent, back.clone().multiplyScalar(rand(3,11))
+      .add(new THREE.Vector3(rand(-1.6,1.6), rand(-0.6,1.4), rand(-1.6,1.6))),
+      C_SMOKE, rand(0.16,0.4), rand(1.2,2.6), 0.9, 3.4);
+  for(let i=0;i<(isTouch?8:14);i++)
+    sparkFX.spawn(vent, back.clone().multiplyScalar(rand(4,14))
+      .add(new THREE.Vector3(rand(-2,2),rand(-1,2),rand(-2,2))),
+      C_SPARK, rand(0.015,0.04), rand(0.15,0.5), 1.6, -0.3);
+  // dust kicked off the deck
+  const ground = new THREE.Vector3(camera.position.x, 0.05, camera.position.z).addScaledVector(back, 1.2);
+  for(let i=0;i<(isTouch?8:16);i++)
+    dustFX.spawn(ground, new THREE.Vector3(rand(-3,3), rand(0.4,2.4), rand(-3,3)), C_DUST,
+      rand(0.08,0.2), rand(0.8,1.8), 1.2, 2.6);
+
+  addTrauma(0.55);
+  vmRecoil.pos.z += 0.16; vmRecoil.rot.x -= 0.5;
+  smokeFX.spawn(mWorld, dir.clone().multiplyScalar(4), C_SMOKE, 0.3, 1.4, 1.0, 3);
+}
+
 function handleHit(h, dir, d){
   const obj = h.object;
   const normal = h.face ? h.face.normal.clone().transformDirection(obj.matrixWorld) : dir.clone().negate();
@@ -2579,6 +2743,23 @@ function reload(){
   aim.target = 0;
   const p = weapon.model.userData;
 
+  if(weapon.key==='rpg'){
+    const p = weapon.model.userData;
+    at(0.15, ()=>foley.cloth(null,0.45,1.1));                       // off the shoulder
+    at(0.75, ()=>{ foley.cloth(null,0.4,1.0); foley.clack(null,{gain:0.6,freq:700}); });
+    at(1.55, ()=>{ foley.slide(null,0.28,{gain:0.8}); });           // round into the tube
+    at(1.95, ()=>{ foley.clack(null,{gain:1.1,freq:620});
+                   if(p.warhead) p.warhead.visible = true; });      // seated
+    at(2.35, ()=>{ foley.click(null,{gain:1.0,freq:1900}); });      // safety pin
+    at(2.75, ()=>{ foley.click(null,{gain:0.9,freq:2600}); foley.spring(null,{gain:0.7}); });
+    at(3.15, ()=>foley.cloth(null,0.4,1.0));                        // back on the shoulder
+    at(dur, ()=>{
+      const take = Math.min(d.mag - st.ammo, st.res);
+      st.ammo += take; st.res -= take;
+      weapon.reloading = false; updateHUDAmmo();
+    });
+    return;
+  }
   if(weapon.key==='sniper'){
     // stripper-clip top-off: five individual rounds, one at a time
     foley.cloth(null,0.4,0.9);
@@ -2906,6 +3087,237 @@ function beamBurn(h, normal, dir, dt, heat){
   scorchMark(point, normal);
 }
 
+/* ============================================================================
+   8c. HIGH EXPLOSIVE — rockets, blast, debris, gibs
+   ========================================================================== */
+const explLight = new THREE.PointLight(0xffbb66, 0, 28, 2); scene.add(explLight);
+let explLightT = 0;
+
+// fireball shells: a few additive spheres that bloom and die
+const fireGeo = new THREE.SphereGeometry(1, 12, 10);
+const fireballs = [];
+function fireball(pos, size, life, hue){
+  const m = new THREE.Mesh(fireGeo, new THREE.MeshBasicMaterial({
+    color:new THREE.Color().setHSL(hue===undefined?0.07:hue, 1, 0.6),
+    transparent:true, opacity:0.95, blending:THREE.AdditiveBlending, depthWrite:false}));
+  m.position.copy(pos); m.scale.setScalar(size*0.25);
+  scene.add(m);
+  fireballs.push({m, t:0, life, size});
+  if(fireballs.length>24){ const f=fireballs.shift(); scene.remove(f.m); }
+}
+function updateFireballs(dt){
+  for(let i=fireballs.length-1;i>=0;i--){
+    const f=fireballs[i]; f.t+=dt;
+    const k=f.t/f.life;
+    if(k>=1){ scene.remove(f.m); fireballs.splice(i,1); continue; }
+    f.m.scale.setScalar(f.size*(0.25 + 0.95*Math.sqrt(k)));
+    f.m.material.opacity = 0.95*(1-k)*(1-k);
+    f.m.material.color.setHSL(lerp(0.10,0.02,k), 1, lerp(0.72,0.30,k));
+    f.m.position.y += dt*0.7*k;                      // heat rises
+  }
+}
+
+// chunks of dirt and concrete thrown by a blast, and body parts, share one solver
+const chunkGeo = new THREE.IcosahedronGeometry(1,0);
+const chunkMat = new THREE.MeshStandardMaterial({color:C(0x6a6054), roughness:1, metalness:0, flatShading:true});
+const debrisBits = [];
+const DEBRIS_MAX = isTouch? 26 : 60;
+function throwChunk(pos, vel, size, mat){
+  const m = new THREE.Mesh(chunkGeo, mat||chunkMat);
+  m.position.copy(pos);
+  m.scale.set(size*rand(0.7,1.3), size*rand(0.7,1.3), size*rand(0.7,1.3));
+  m.rotation.set(rand(0,3),rand(0,3),rand(0,3));
+  m.castShadow = !isTouch;
+  scene.add(m);
+  debrisBits.push({m, v:vel.clone(), w:new THREE.Vector3(rand(-12,12),rand(-12,12),rand(-12,12)),
+                   t:0, rest:false, bleed:0});
+  if(debrisBits.length>DEBRIS_MAX){ const d=debrisBits.shift(); scene.remove(d.m); }
+}
+function updateDebrisBits(dt){
+  for(let i=debrisBits.length-1;i>=0;i--){
+    const d=debrisBits[i]; d.t+=dt;
+    if(d.t>16){ scene.remove(d.m); debrisBits.splice(i,1); continue; }
+    if(d.rest) continue;
+    d.v.y -= 19.6*dt;
+    const drag = Math.exp(-0.55*dt);
+    d.v.x *= drag; d.v.z *= drag;
+    d.m.position.addScaledVector(d.v, dt);
+    d.m.rotation.x += d.w.x*dt; d.m.rotation.y += d.w.y*dt; d.m.rotation.z += d.w.z*dt;
+    // limbs trail blood while they are in the air
+    if(d.bleed > 0){
+      d.bleed -= dt;
+      if(Math.random()<0.7)
+        dustFX.spawn(d.m.position, d.v.clone().multiplyScalar(-0.12)
+          .add(new THREE.Vector3(rand(-.6,.6),rand(-.3,.3),rand(-.6,.6))),
+          C_BLOOD, rand(0.02,0.055), rand(0.5,1.1), 1.2, 0.3);
+    }
+    const floor = 0.05;
+    if(d.m.position.y <= floor && d.v.y < 0){
+      d.m.position.y = floor;
+      const hard = Math.abs(d.v.y);
+      if(d.bleed !== undefined && d.gore){
+        bloodSplat(new THREE.Vector3(d.m.position.x, 0.02, d.m.position.z), new THREE.Vector3(0,1,0), rand(0.4,0.9));
+        foley.splat(d.m.position, clamp(hard/7,0.3,1));
+        for(let j=0;j<5;j++)
+          dustFX.spawn(d.m.position, new THREE.Vector3(rand(-1.6,1.6),rand(0.4,2.4),rand(-1.6,1.6)),
+            C_BLOOD, rand(0.02,0.05), rand(0.4,0.9), 2, 0.4);
+      }else if(hard>2.5){
+        foley.impact(d.m.position, surfaceAt(d.m.position.x,d.m.position.z)==='concrete'?'concrete':'sand');
+      }
+      d.v.y *= -0.24; d.v.x *= 0.55; d.v.z *= 0.55; d.w.multiplyScalar(0.5);
+      if(Math.abs(d.v.y) < 0.7){ d.rest = true; d.v.set(0,0,0); d.bleed = 0; }
+    }
+  }
+}
+
+/* ---- the blast ------------------------------------------------------------ */
+function explode(point, cfg){
+  const c = cfg||{};
+  const radius = c.radius || 8.5, power = c.dmg || 260;
+  const distToPlayer = camera.position.distanceTo(point);
+  const near = clamp(1 - distToPlayer/(radius*1.8), 0, 1);
+
+  foley.explosion(point, near>0.12? near : 0);
+  fireball(point, radius*0.42, 0.42, 0.10);
+  fireball(point.clone().add(new THREE.Vector3(rand(-.6,.6),rand(0,.8),rand(-.6,.6))), radius*0.30, 0.55, 0.06);
+  fireball(point.clone().add(new THREE.Vector3(rand(-.8,.8),rand(0,1.2),rand(-.8,.8))), radius*0.22, 0.7, 0.03);
+  shockRing(point, 0xffd9a0, false, radius*1.1);
+  shockRing(new THREE.Vector3(point.x, 0.06, point.z), 0xffa860, true, radius*1.5);
+  scorchMark(new THREE.Vector3(point.x, 0.02, point.z), new THREE.Vector3(0,1,0), radius*0.16);
+
+  explLight.position.copy(point); explLight.intensity = 40; explLightT = 0.5;
+
+  // dirt, smoke and sparks
+  for(let i=0;i<(isTouch?18:34);i++){
+    const dir = new THREE.Vector3(rand(-1,1), rand(0.1,1), rand(-1,1)).normalize();
+    dustFX.spawn(point, dir.clone().multiplyScalar(rand(3,16)), C_DUST,
+      rand(0.06,0.22), rand(0.8,2.0), 1.1, 3.2);
+  }
+  for(let i=0;i<(isTouch?12:22);i++)
+    smokeFX.spawn(point.clone().add(new THREE.Vector3(rand(-1,1),rand(0,1.4),rand(-1,1))),
+      new THREE.Vector3(rand(-2,2), rand(1,4), rand(-2,2)), C_SMOKE,
+      rand(0.25,0.6), rand(1.6,3.2), 0.7, 3.0);
+  for(let i=0;i<(isTouch?14:26);i++)
+    sparkFX.spawn(point, new THREE.Vector3(rand(-1,1),rand(-0.2,1),rand(-1,1)).normalize()
+      .multiplyScalar(rand(6,24)), C_SPARK, rand(0.015,0.05), rand(0.3,1.0), 0.9, -0.3);
+  for(let i=0;i<(isTouch?5:10);i++)
+    throwChunk(point.clone().add(new THREE.Vector3(rand(-.5,.5),rand(0,.6),rand(-.5,.5))),
+      new THREE.Vector3(rand(-1,1),rand(0.4,1.4),rand(-1,1)).normalize().multiplyScalar(rand(4,11)),
+      rand(0.06,0.20));
+
+  // camera gets rocked
+  addTrauma(near*0.9 + 0.15);
+
+  // damage in a sphere, with line of sight
+  for(let i=enemies.length-1;i>=0;i--){
+    const e = enemies[i];
+    if(e.dead) continue;
+    const chest = e.torso.getWorldPosition(new THREE.Vector3());
+    const d = chest.distanceTo(point);
+    if(d > radius) continue;
+    const falloff = Math.pow(1 - d/radius, 1.4);
+    const dmg = power*falloff;
+    const dir = chest.clone().sub(point).normalize();
+    const lethal = dmg >= e.hp;
+    if(lethal && d < radius*0.55){ e.gib(point); onKill(e, false); }
+    else if(e.damage(dmg, dir, 'chest')){ onKill(e, false); }
+  }
+  if(distToPlayer < radius){
+    const f = Math.pow(1 - distToPlayer/radius, 1.4);
+    hurt(power*0.42*f, point);
+  }
+  game.shotsLanded++;
+}
+function updateExplLight(dt){
+  if(explLightT>0){
+    explLightT -= dt;
+    explLight.intensity = Math.max(0, explLight.intensity * Math.pow(0.0009, dt));
+    if(explLightT<=0) explLight.intensity = 0;
+  }
+}
+
+/* ---- rockets --------------------------------------------------------------- */
+const rockets = [];
+function buildRocketMesh(){
+  const g = new THREE.Group();
+  const WAR = new THREE.MeshStandardMaterial({color:C(0x4a4a3c), roughness:0.6, metalness:0.35});
+  const a = new THREE.Mesh(new THREE.CylinderGeometry(0.030,0.030,0.16,12), WAR);
+  const b2= new THREE.Mesh(new THREE.CylinderGeometry(0.030,0.060,0.10,14), WAR);
+  const c2= new THREE.Mesh(new THREE.CylinderGeometry(0.060,0.014,0.16,14), WAR);
+  a.rotation.x = b2.rotation.x = c2.rotation.x = Math.PI/2;
+  a.position.z = 0.16; b2.position.z = 0.03; c2.position.z = -0.11;
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.004,0.07,0.09), WAR);
+  for(let i=0;i<4;i++){
+    const f = fin.clone();
+    f.position.set(0,0,0.22); f.rotation.z = i*Math.PI/2;
+    f.position.x = Math.sin(i*Math.PI/2)*0.03; f.position.y = Math.cos(i*Math.PI/2)*0.03;
+    g.add(f);
+  }
+  g.add(a,b2,c2);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow = !isTouch; });
+  return g;
+}
+function launchRocket(from, dir){
+  const m = buildRocketMesh();
+  m.position.copy(from);
+  m.lookAt(from.clone().add(dir));
+  scene.add(m);
+  const light = new THREE.PointLight(0xffa050, 0, 14, 2);
+  scene.add(light);
+  rockets.push({m, light, v:dir.clone().multiplyScalar(20), t:0, burn:0.5, smoke:0});
+  if(rockets.length>4){ const r=rockets.shift(); scene.remove(r.m); scene.remove(r.light); }
+}
+function updateRockets(dt){
+  for(let i=rockets.length-1;i>=0;i--){
+    const r = rockets[i];
+    r.t += dt;
+    const prev = r.m.position.clone();
+    if(r.t < r.burn) r.v.addScaledVector(r.v.clone().normalize(), 90*dt);    // motor still burning
+    else r.v.y -= 9.0*dt;                                                     // then it falls off
+    r.m.position.addScaledVector(r.v, dt);
+    r.m.lookAt(r.m.position.clone().add(r.v));
+    r.light.position.copy(r.m.position);
+    r.light.intensity = r.t < r.burn ? 7 : 0;
+
+    // exhaust
+    r.smoke -= dt;
+    if(r.smoke <= 0){
+      r.smoke = 0.012;
+      const back = r.v.clone().normalize().multiplyScalar(-1);
+      smokeFX.spawn(r.m.position.clone().addScaledVector(back,0.22),
+        back.clone().multiplyScalar(rand(1,4)).add(new THREE.Vector3(rand(-.4,.4),rand(-.2,.4),rand(-.4,.4))),
+        C_SMOKE, rand(0.10,0.26), rand(1.2,2.4), 0.9, 3.2);
+      if(r.t < r.burn)
+        sparkFX.spawn(r.m.position.clone().addScaledVector(back,0.18),
+          back.clone().multiplyScalar(rand(2,7)), C_SPARK, rand(0.02,0.05), rand(0.06,0.2), 2, -0.4);
+      if(Math.random()<0.25) foley.rocketFlight(r.m.position);
+    }
+
+    // collision along the step
+    const step = r.m.position.clone().sub(prev);
+    const dist = step.length();
+    if(dist > 0.0001){
+      _ray.set(prev, step.clone().normalize());
+      _ray.far = dist + 0.25;
+      const hits = _ray.intersectObjects(shootables.concat(enemyHitboxes), false);
+      _ray.far = 400;
+      if(hits.length){
+        const h = hits[0];
+        const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : new THREE.Vector3(0,1,0);
+        explode(h.point.clone().addScaledVector(n, 0.25), weapon.def.blast || {radius:8.5, dmg:260});
+        scene.remove(r.m); scene.remove(r.light); rockets.splice(i,1);
+        continue;
+      }
+    }
+    if(r.t > 8 || r.m.position.y < -1){
+      scene.remove(r.m); scene.remove(r.light); rockets.splice(i,1);
+    }
+  }
+}
+
+/* ---- camera trauma --------------------------------------------------------- */
+function addTrauma(k){ player.trauma = Math.min(1, (player.trauma||0) + k); }
+
 /* ---- viewmodel animation ---------------------------------------------------- */
 const vmRecoil = {pos:new THREE.Vector3(), rot:new THREE.Vector3()};
 function updateWeapon(dt){
@@ -2951,7 +3363,7 @@ function updateWeapon(dt){
   else if(trigger){
     // fire every round the clock has room for, so cadence survives a frame-rate dip
     if(mode==='AUTO'){ let guard=0; while(game.time>=weapon.nextShot && guard++<5) fire(); }
-    else if(mode==='SEMI' || mode==='BOLT'){ if(!weapon.semiLatch){ weapon.semiLatch=true; fire(); } }
+    else if(mode==='SEMI' || mode==='BOLT' || mode==='SINGLE'){ if(!weapon.semiLatch){ weapon.semiLatch=true; fire(); } }
     else if(mode==='BURST'){ if(!weapon.semiLatch){ weapon.semiLatch=true; weapon.burstLeft=2; weapon.burstNext=game.time+60/d.rpm; fire(); } }
   } else weapon.semiLatch = false;
 
@@ -3199,6 +3611,54 @@ class Enemy {
       foley.clack(this.g.position,{gain:0.5,freq:600});
     }, 420);
     this.fadeAt = game.time + 16;
+  }
+  // blown apart: the body separates at the joints and the pieces fly
+  gib(origin){
+    if(this.gibbed) return;
+    this.dead = true; this.gibbed = true; this.vapor = undefined;
+    for(let i=enemyHitboxes.length-1;i>=0;i--)
+      if(enemyHitboxes[i].userData.enemy===this) enemyHitboxes.splice(i,1);
+
+    const centre = this.torso.getWorldPosition(new THREE.Vector3());
+    foley.gib(centre);
+
+    // every limb becomes its own rigid body, keeping its world transform
+    const parts = [this.headG, this.torso, this.armL, this.armR, this.legL, this.legR];
+    const wp = new THREE.Vector3(), wq = new THREE.Quaternion(), ws = new THREE.Vector3();
+    for(const part of parts){
+      if(!part || !part.parent) continue;
+      part.updateWorldMatrix(true, true);
+      part.matrixWorld.decompose(wp, wq, ws);
+      part.parent.remove(part);
+      part.position.copy(wp); part.quaternion.copy(wq); part.scale.copy(ws);
+      scene.add(part);
+      const away = wp.clone().sub(origin);
+      const d = Math.max(0.4, away.length());
+      away.normalize();
+      const speed = clamp(16/d, 2.5, 10);
+      const v = away.multiplyScalar(speed)
+        .add(new THREE.Vector3(rand(-1.8,1.8), rand(1.8,4.6), rand(-1.8,1.8)));
+      debrisBits.push({m:part, v, w:new THREE.Vector3(rand(-16,16),rand(-16,16),rand(-16,16)),
+                       t:0, rest:false, bleed:rand(0.8,1.8), gore:true});
+      if(debrisBits.length>DEBRIS_MAX){ const old=debrisBits.shift(); scene.remove(old.m); }
+    }
+    // the spray
+    bloodSpray(centre, new THREE.Vector3(0,1,0), 34);
+    for(let i=0;i<26;i++){
+      const dir = new THREE.Vector3(rand(-1,1), rand(-0.1,1), rand(-1,1)).normalize();
+      dustFX.spawn(centre, dir.multiplyScalar(rand(3,12)), C_BLOOD,
+        rand(0.02,0.075), rand(0.6,1.5), 1.1, 0.8);
+    }
+    for(let i=0;i<8;i++){
+      const a = Math.random()*TAU, r = rand(0.4,2.6);
+      bloodSplat(new THREE.Vector3(this.g.position.x + Math.cos(a)*r, 0.02, this.g.position.z + Math.sin(a)*r),
+        new THREE.Vector3(0,1,0), rand(0.35,1.0));
+    }
+    bloodPool(this.g.position);
+    shockRing(centre, 0x8a1410, false, 2.2);
+    // whatever is left of the frame goes away
+    scene.remove(this.g);
+    const i = enemies.indexOf(this); if(i>=0) enemies.splice(i,1);
   }
   // flash-boiled by the beam: glows through, collapses into embers and ash
   disintegrate(dir){
@@ -3461,6 +3921,35 @@ scopeEl.innerHTML =
  '<div style="position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;background:rgba(10,10,10,.95);border-radius:50%"></div>'+
  '<div style="position:absolute;left:50%;top:50%;width:120px;height:1px;margin:-.5px 0 0 -60px;background:rgba(255,255,255,.06)"></div>';
 hud.el.appendChild(scopeEl);
+
+// blood thrown across the view when you take a hit
+const bloodScreenTex = (()=>{
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d');
+  const drop = (x,y,r,a)=>{
+    const grd = g.createRadialGradient(x,y,0,x,y,r);
+    grd.addColorStop(0, `rgba(120,10,8,${a})`);
+    grd.addColorStop(0.6, `rgba(88,6,6,${a*0.75})`);
+    grd.addColorStop(1, 'rgba(70,4,4,0)');
+    g.fillStyle = grd; g.beginPath(); g.arc(x,y,r,0,TAU); g.fill();
+  };
+  for(let i=0;i<70;i++){                       // heavier toward the edges, like a visor
+    const a = Math.random()*TAU, rr = Math.pow(Math.random(),0.45)*0.5;
+    drop(256 + Math.cos(a)*rr*512, 256 + Math.sin(a)*rr*512, rand(6,46), rand(0.25,0.8));
+  }
+  for(let i=0;i<26;i++){                       // runs
+    const x = Math.random()*512, y = Math.random()*512, h = rand(14,70);
+    const grd = g.createLinearGradient(x,y,x,y+h);
+    grd.addColorStop(0,'rgba(100,8,8,0.55)'); grd.addColorStop(1,'rgba(100,8,8,0)');
+    g.fillStyle = grd; g.fillRect(x, y, rand(2,7), h);
+  }
+  return c.toDataURL('image/png');
+})();
+const bloodScreen = document.createElement('div');
+bloodScreen.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none;' +
+  'background-size:cover;background-position:center;mix-blend-mode:multiply;transition:opacity .25s;' +
+  'background-image:url(' + bloodScreenTex + ')';
+hud.el.appendChild(bloodScreen);
 // mil-dot ladder
 for(let i=1;i<=5;i++){
   const d=document.createElement('div');
@@ -3529,6 +4018,8 @@ function hurt(amount, fromPos){
   player.hp = Math.max(0, player.hp - amount);
   player.lastHurt = game.time;
   hud.dmgT = 0.45;
+  hud.bloodT = Math.min(1.5, (hud.bloodT||0) + amount/48);
+  addTrauma(clamp(amount/90, 0.04, 0.45));
   if(fromPos) damageArrow(fromPos);
   foley.impact(camera.position.clone().addScaledVector(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion),0.6),'flesh');
   foley.breath('gasp');
@@ -3651,6 +4142,10 @@ function updateHUD(dt){
   if(hud.hmT>0){ hud.hmT-=dt; if(hud.hmT<=0) hud.hm.style.opacity=0; }
   if(hud.toastT>0){ hud.toastT-=dt; if(hud.toastT<=0) hud.toast.style.opacity=0; }
   if(hud.dmgT>0){ hud.dmgT-=dt; hud.dmg.style.boxShadow = `inset 0 0 190px rgba(255,30,20,${0.55*clamp(hud.dmgT/0.45,0,1)})`; }
+  if(hud.bloodT > 0){
+    hud.bloodT = Math.max(0, hud.bloodT - dt*0.20);
+    bloodScreen.style.opacity = clamp(hud.bloodT, 0, 0.8);
+  }
   // vitals
   hud.hp.style.width = player.hp + '%';
   hud.hp.className = player.hp<40? 'hurt':'';
@@ -3693,6 +4188,7 @@ function onKeyPress(code){
     case 'Digit3': switchWeapon('pistol'); break;
     case 'Digit4': switchWeapon('sniper'); break;
     case 'Digit5': switchWeapon('laser'); break;
+    case 'Digit6': switchWeapon('rpg'); break;
     case 'KeyQ': cycleWeapon(); break;
     case 'KeyR': reload(); break;
     case 'KeyB': toggleFireMode(); break;
@@ -3754,6 +4250,7 @@ function startGame(mode){
   game.mode = mode; game.running=true; game.menu=false; game.paused=false; game.dead=false;
   game.score=0; game.kills=0; game.hits=0; game.shotsFired=0; game.wave=0; game.waveT=0;
   player.hp=100; player.pos.set(0,0,0.3); player.vel.set(0,0,0);
+  player.trauma = 0; hud.bloodT = 0; bloodScreen.style.opacity = 0;
   player.yaw=0; player.pitch=0;
   WKEYS.forEach(k=>{ state[k].ammo=WEAPONS[k].mag; state[k].res=WEAPONS[k].reserve; state[k].mode=0; });
   while(enemies.length) enemies[0].remove();
@@ -3902,7 +4399,7 @@ bindButton($('#t-crouch'),()=>{
 });
 bindButton($('#t-focus'), ()=>{ setSlow(!game.slow); $('#t-focus').classList.toggle('on', game.slow); });
 bindButton($('#t-pause'), ()=>pause(true));
-const WSHORT = {rifle:'MK18', smg:'MP7', pistol:'P226', sniper:'M700', laser:'DEW'};
+const WSHORT = {rifle:'MK18', smg:'MP7', pistol:'P226', sniper:'M700', laser:'DEW', rpg:'RPG-7'};
 const gunFan = $('#t-guns'), swapBtn = $('#t-swap');
 let fanTimer = null, fanHold = null, fanOpen = false;
 
@@ -4081,6 +4578,7 @@ function frameLoop(now){
     targetsUpdate(dt);
     updateShells(dt); updateDebris(dt); updateTracers(dt); updateFlash(dt); updateSplats(dt);
     updateRings(dt); updateMotes(dt);
+    updateRockets(dt); updateFireballs(dt); updateDebrisBits(dt); updateExplLight(dt);
     dustFX.update(dt); sparkFX.update(dt); smokeFX.update(dt);
     for(let i=enemies.length-1;i>=0;i--) enemies[i].update(dt);
 
