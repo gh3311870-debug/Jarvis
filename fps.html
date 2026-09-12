@@ -1275,7 +1275,13 @@ function container(x,z,ry,color){
   return g;
 }
 function crate(x,y,z,s,ry){
-  return box(s,s,s,x,y+s/2,z, MAT.wood, {sound:'wood', ry:ry||rand(-.3,.3)});
+  const m = box(s,s,s,x,y+s/2,z, MAT.wood, {sound:'wood', ry:ry||rand(-.3,.3)});
+  registerProp(m);
+  return m;
+}
+const dynProps = [];      // loose props a blast can pick up
+function registerProp(mesh){
+  dynProps.push({m:mesh, col:colliders[colliders.length-1], thrown:false});
 }
 function barrel(x,z){
   const m = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.94,18), 
@@ -1283,6 +1289,7 @@ function barrel(x,z){
   m.position.set(x,0.47,z); m.castShadow=m.receiveShadow=true; m.userData.mat='metal';
   world.add(m); shootables.push(m);
   colliders.push({min:new THREE.Vector3(x-0.32,0,z-0.32), max:new THREE.Vector3(x+0.32,0.94,z+0.32)});
+  registerProp(m);
   return m;
 }
 // low walls / ruins that flank the range — cover for CONTACT mode
@@ -2739,7 +2746,7 @@ function reload(){
   if(weapon.reloading || weapon.switching>0 || st.ammo>=d.mag || st.res<=0 || weapon.needBolt) return;
   const empty = st.ammo===0;
   const dur = empty? d.reload.empty : d.reload.tac;
-  weapon.reloading = true; weapon.reloadEnd = game.time + dur;
+  weapon.reloading = true; weapon.reloadEnd = game.time + dur; weapon.reloadDur = dur;
   aim.target = 0;
   const p = weapon.model.userData;
 
@@ -3136,7 +3143,7 @@ function throwChunk(pos, vel, size, mat){
 function updateDebrisBits(dt){
   for(let i=debrisBits.length-1;i>=0;i--){
     const d=debrisBits[i]; d.t+=dt;
-    if(d.t>16){ scene.remove(d.m); debrisBits.splice(i,1); continue; }
+    if(d.t>16 && !d.keep){ scene.remove(d.m); debrisBits.splice(i,1); continue; }
     if(d.rest) continue;
     d.v.y -= 19.6*dt;
     const drag = Math.exp(-0.55*dt);
@@ -3204,6 +3211,24 @@ function explode(point, cfg){
     throwChunk(point.clone().add(new THREE.Vector3(rand(-.5,.5),rand(0,.6),rand(-.5,.5))),
       new THREE.Vector3(rand(-1,1),rand(0.4,1.4),rand(-1,1)).normalize().multiplyScalar(rand(4,11)),
       rand(0.06,0.20));
+
+  // loose props get thrown
+  for(const pr of dynProps){
+    if(pr.thrown) continue;
+    const d = pr.m.position.distanceTo(point);
+    if(d > radius*1.15) continue;
+    pr.thrown = true;
+    const away = pr.m.position.clone().sub(point);
+    away.y = Math.abs(away.y) + 0.4;
+    away.normalize();
+    if(pr.m.parent) pr.m.parent.remove(pr.m);
+    scene.add(pr.m);
+    const speed = clamp(22/Math.max(0.6,d), 3, 15);
+    debrisBits.push({m:pr.m, v:away.multiplyScalar(speed).add(new THREE.Vector3(rand(-1,1),rand(1,3),rand(-1,1))),
+                     w:new THREE.Vector3(rand(-9,9),rand(-9,9),rand(-9,9)), t:0, rest:false, bleed:0, keep:true});
+    if(pr.col){ pr.col.min.set(0,-999,0); pr.col.max.set(0,-998,0); }   // no longer blocks you
+    if(debrisBits.length>DEBRIS_MAX){ const old=debrisBits.shift(); scene.remove(old.m); }
+  }
 
   // camera gets rocked
   addTrauma(near*0.9 + 0.15);
@@ -3392,11 +3417,36 @@ function updateWeapon(dt){
   const bobX = Math.cos(player.bobPhase)*0.016*bob;
   const bobY = Math.abs(Math.sin(player.bobPhase))*0.014*bob;
 
-  // sprint pose
+  // sprint pose — the weapon swings with the stride rather than sitting still
   const sprintT = player.sprint? 1:0;
   weapon.sprintA = damp(weapon.sprintA||0, sprintT, 9, dt);
+  const stride = Math.sin(player.bobPhase*0.5), stride2 = Math.cos(player.bobPhase*0.5);
+  const sprintSwayX = stride*0.035*weapon.sprintA;
+  const sprintSwayY = Math.abs(stride2)*0.022*weapon.sprintA;
+  const sprintRoll  = stride*0.10*weapon.sprintA;
+
+  // reload is a shaped move, not a single blended pose
   const reloadT = weapon.reloading? 1:0;
   weapon.reloadA = damp(weapon.reloadA||0, reloadT, 10, dt);
+  let rDip = 0, rTwist = 0, rJolt = 0;
+  if(weapon.reloading && weapon.reloadDur){
+    const rp = clamp(1 - (weapon.reloadEnd - game.time)/weapon.reloadDur, 0, 1);
+    const sstep = x=>x*x*(3-2*x);
+    const seg = (a,b)=>clamp((rp-a)/(b-a),0,1);
+    rDip = Math.min(sstep(seg(0,0.16)), 1-sstep(seg(0.80,1)));
+    rTwist = rDip;
+    // the mag seating and the bolt going home each snap the weapon
+    rJolt = Math.exp(-260*Math.pow(rp-0.46,2))*0.9 + Math.exp(-320*Math.pow(rp-0.78,2))*1.1;
+    // charging handle rides back and forward on an empty reload
+    const p2 = weapon.model.userData;
+    if(p2.charge){
+      const ch = Math.max(0, Math.sin(clamp(seg(0.70,0.88),0,1)*Math.PI));
+      p2.charge.position.z = 0.085 + ch*0.085;
+    }
+  }else{
+    const p2 = weapon.model.userData;
+    if(p2.charge) p2.charge.position.z = damp(p2.charge.position.z, 0.085, 14, dt);
+  }
   const switchA = weapon.switching>0 ? Math.sin(clamp(weapon.switching/0.62,0,1)*Math.PI) : 0;
   const inspectA = weapon.inspect>0 ? Math.sin(clamp(weapon.inspect/2.1,0,1)*Math.PI) : 0;
 
@@ -3406,14 +3456,19 @@ function updateWeapon(dt){
 
   const g = weapon.model;
   g.position.set(
-    px + player.swayX + idleX + bobX + vmRecoil.pos.x + weapon.sprintA*0.07 + weapon.reloadA*0.045 + inspectA*0.05,
-    py + player.swayY + idleY - bobY + vmRecoil.pos.y - weapon.sprintA*0.05 - weapon.reloadA*0.06 - switchA*0.30 - inspectA*0.02,
-    pz + vmRecoil.pos.z + weapon.sprintA*0.02 + weapon.reloadA*0.03 - inspectA*0.06
+    px + player.swayX + idleX + bobX + vmRecoil.pos.x + weapon.sprintA*0.07 + sprintSwayX
+       + rDip*0.05 + rJolt*0.006 + inspectA*0.05,
+    py + player.swayY + idleY - bobY + vmRecoil.pos.y - weapon.sprintA*0.05 - sprintSwayY
+       - rDip*0.075 - rJolt*0.012 - switchA*0.30 - inspectA*0.02 - player.landPunch*0.7,
+    pz + vmRecoil.pos.z + weapon.sprintA*0.02 + rDip*0.03 + rJolt*0.01 - inspectA*0.06
   );
   g.rotation.set(
-    lerp(p.hipRot.x, p.adsRot.x, t) + vmRecoil.rot.x*0.06 - player.swayY*3.2 + weapon.sprintA*0.28 + weapon.reloadA*0.30 + switchA*0.5 + inspectA*0.25,
-    lerp(p.hipRot.y, p.adsRot.y, t) - player.swayX*3.0 + weapon.sprintA*0.55 + weapon.reloadA*0.42 + inspectA*(0.9+Math.sin(performance.now()*0.004)*0.4),
-    lerp(p.hipRot.z, p.adsRot.z, t) + vmRecoil.rot.z*0.05 + weapon.sprintA*0.26 + weapon.reloadA*0.22 + inspectA*0.5
+    lerp(p.hipRot.x, p.adsRot.x, t) + vmRecoil.rot.x*0.06 - player.swayY*3.2 + weapon.sprintA*0.28
+      + rDip*0.34 + rJolt*0.05 + switchA*0.5 + inspectA*0.25 + player.landPunch*1.2,
+    lerp(p.hipRot.y, p.adsRot.y, t) - player.swayX*3.0 + weapon.sprintA*0.55 + sprintRoll*0.5
+      + rTwist*0.45 + inspectA*(0.9+Math.sin(performance.now()*0.004)*0.4),
+    lerp(p.hipRot.z, p.adsRot.z, t) + vmRecoil.rot.z*0.05 + weapon.sprintA*0.26 + sprintRoll
+      + rTwist*0.30 + rJolt*0.04 + inspectA*0.5
   );
   // pistol slide lock
   if(weapon.key==='pistol' && p.slide) p.slide.position.z = lerp(-0.07, -0.035, weapon.slideBack?1:0);
@@ -3437,6 +3492,8 @@ function updateWeapon(dt){
    ========================================================================== */
 const enemies = [];
 const enemyHitboxes = [];
+const _rgUp = new THREE.Vector3(0,1,0), _rgDown = new THREE.Vector3(0,-1,0);
+const _rgV = new THREE.Vector3(), _rgQ = new THREE.Quaternion();
 const blockers = [];   // only things big enough to actually hide behind
 {
   const sz = new THREE.Vector3();
@@ -3591,25 +3648,131 @@ class Enemy {
     this.flinch = beam? 0.1 : 0.22;
     this.suppressT = 0.9;
     this.nextShot = Math.max(this.nextShot, game.time + (beam?0.1:0.25));
-    if(this.hp<=0){ if(beam) this.disintegrate(dir); else this.kill(dir); return true; }
+    if(this.hp<=0){
+      if(beam) this.disintegrate(dir);
+      else this.kill(dir, clamp(amount/45, 0.6, 3.2));
+      return true;
+    }
     if(this.state==='advance'){ this.state='engage'; this.stateT=0; }
     return false;
   }
-  kill(dir){
+  // a chain of point masses with distance constraints: cheap, and it flops
+  // like a body instead of rotating like a plank
+  startRagdoll(dir, power){
+    const g = this.g;
+    g.updateWorldMatrix(true, true);
+    const P = (x,y,z,r)=>{ const v=new THREE.Vector3(x,y,z); g.localToWorld(v);
+      return {p:v, prev:v.clone(), r:r||0.08}; };
+    const R = this.rag = {
+      head:      P(0,      1.60, 0, 0.13),
+      chest:     P(0,      1.30, 0, 0.14),
+      pelvis:    P(0,      0.90, 0, 0.13),
+      shoulderL: P(-0.245, 1.40, 0, 0.09),
+      shoulderR: P( 0.245, 1.40, 0, 0.09),
+      elbowL:    P(-0.245, 1.14, 0, 0.07),
+      elbowR:    P( 0.245, 1.14, 0, 0.07),
+      handL:     P(-0.245, 0.89, 0, 0.06),
+      handR:     P( 0.245, 0.89, 0, 0.06),
+      hipL:      P(-0.115, 0.80, 0, 0.09),
+      hipR:      P( 0.115, 0.80, 0, 0.09),
+      kneeL:     P(-0.115, 0.40, 0, 0.08),
+      kneeR:     P( 0.115, 0.40, 0, 0.08),
+      footL:     P(-0.115, 0.06, 0, 0.08),
+      footR:     P( 0.115, 0.06, 0, 0.08)
+    };
+    this.ragPts = Object.keys(R).map(k=>R[k]);
+    const C = (a,b,k)=>({a:R[a], b:R[b], len:R[a].p.distanceTo(R[b].p), k:k===undefined?1:k});
+    this.ragCons = [
+      C('head','chest'), C('chest','pelvis'),
+      C('chest','shoulderL'), C('chest','shoulderR'), C('shoulderL','shoulderR',0.7),
+      C('shoulderL','elbowL'), C('elbowL','handL'),
+      C('shoulderR','elbowR'), C('elbowR','handR'),
+      C('pelvis','hipL'), C('pelvis','hipR'), C('hipL','hipR',0.7),
+      C('hipL','kneeL'), C('kneeL','footL'),
+      C('hipR','kneeR'), C('kneeR','footR'),
+      // stiffeners so the torso keeps its shape and the limbs do not fold through it
+      C('head','pelvis',0.28), C('shoulderL','hipL',0.4), C('shoulderR','hipR',0.4),
+      C('shoulderL','pelvis',0.25), C('shoulderR','pelvis',0.25),
+      C('shoulderL','hipR',0.18), C('shoulderR','hipL',0.18)
+    ];
+    // the round that killed them carries the body with it
+    const v = (dir||new THREE.Vector3(0,0,-1)).clone().setY(0.3).normalize().multiplyScalar((power||1)*0.055);
+    for(const pt of this.ragPts){
+      pt.prev.copy(pt.p).sub(v).add(new THREE.Vector3(rand(-.006,.006), rand(-.004,.004), rand(-.006,.006)));
+    }
+    R.chest.prev.sub(v.clone().multiplyScalar(0.8));       // takes the hit hardest
+    R.head.prev.sub(v.clone().multiplyScalar(0.5));
+    // zero the root so the limbs can be driven straight in world space
+    this.deathPos = g.position.clone();
+    g.position.set(0,0,0); g.quaternion.identity(); g.scale.set(1,1,1);
+    this.ragAsleep = 0;
+    this.poseFromRagdoll();      // place the limbs at once: an unposed body would sit at the origin
+  }
+  updateRagdoll(dt){
+    const R = this.rag;
+    if(!R) return;
+    if(this.ragAsleep > 1.2) return;                        // settled: stop simulating
+    const h = Math.min(dt, 0.033);
+    let motion = 0;
+    for(const pt of this.ragPts){
+      const px=pt.p.x, py=pt.p.y, pz=pt.p.z;
+      pt.p.x += (pt.p.x - pt.prev.x)*0.985;
+      pt.p.y += (pt.p.y - pt.prev.y)*0.985 - 19.6*h*h;
+      pt.p.z += (pt.p.z - pt.prev.z)*0.985;
+      pt.prev.set(px,py,pz);
+      motion += Math.abs(pt.p.x-px) + Math.abs(pt.p.y-py) + Math.abs(pt.p.z-pz);
+    }
+    for(let it=0; it<3; it++){
+      for(const c of this.ragCons){
+        const dx=c.b.p.x-c.a.p.x, dy=c.b.p.y-c.a.p.y, dz=c.b.p.z-c.a.p.z;
+        const l = Math.sqrt(dx*dx+dy*dy+dz*dz) || 1e-4;
+        const f = ((l - c.len)/l) * 0.5 * c.k;
+        c.a.p.x += dx*f; c.a.p.y += dy*f; c.a.p.z += dz*f;
+        c.b.p.x -= dx*f; c.b.p.y -= dy*f; c.b.p.z -= dz*f;
+      }
+      for(const pt of this.ragPts){
+        if(pt.p.y < pt.r){
+          pt.p.y = pt.r;
+          pt.prev.x += (pt.p.x - pt.prev.x)*0.5;            // ground friction
+          pt.prev.z += (pt.p.z - pt.prev.z)*0.5;
+        }
+      }
+    }
+    this.ragAsleep = motion < 0.012 ? this.ragAsleep + dt : 0;
+    this.poseFromRagdoll();
+  }
+  poseFromRagdoll(){
+    const R = this.rag, up = _rgUp, down = _rgDown, t = _rgV;
+    this.torso.position.copy(R.chest.p);
+    this.torso.quaternion.setFromUnitVectors(up, t.copy(R.head.p).sub(R.pelvis.p).normalize());
+    this.headG.position.copy(R.head.p);
+    this.headG.quaternion.copy(this.torso.quaternion);
+    const limb = (group, a, b, c, child)=>{
+      group.position.copy(a.p);
+      group.quaternion.setFromUnitVectors(down, t.copy(b.p).sub(a.p).normalize());
+      if(child){
+        _rgQ.setFromUnitVectors(down, t.copy(c.p).sub(b.p).normalize());
+        child.quaternion.copy(group.quaternion).invert().multiply(_rgQ);
+      }
+    };
+    limb(this.armL, R.shoulderL, R.elbowL, R.handL, this.armL.fore);
+    limb(this.armR, R.shoulderR, R.elbowR, R.handR, this.armR.fore);
+    limb(this.legL, R.hipL, R.kneeL, R.footL, this.legL.shin);
+    limb(this.legR, R.hipR, R.kneeR, R.footR, this.legR.shin);
+  }
+  kill(dir, power){
     this.dead = true;
     this.deathT = 0;
     this.deathDir = (dir||new THREE.Vector3(0,0,1)).clone().setY(0).normalize();
+    // read these while the body is still standing — the ragdoll zeroes the root
     const chest = this.torso.getWorldPosition(new THREE.Vector3());
+    const feet  = this.g.position.clone();
+    this.startRagdoll(dir, power||1);
     bloodSpray(chest, this.deathDir.clone(), 22);
-    bloodPool(this.g.position);
+    bloodPool(feet);
     for(let i=enemyHitboxes.length-1;i>=0;i--)
       if(enemyHitboxes[i].userData.enemy===this) enemyHitboxes.splice(i,1);
-    foley.impact(this.g.position.clone().setY(1.2), 'flesh');
-    setTimeout(()=>{
-      foley.step(this.g.position, surfaceAt(this.g.position.x,this.g.position.z), true);
-      foley.cloth(this.g.position, 0.4, 1.2);
-      foley.clack(this.g.position,{gain:0.5,freq:600});
-    }, 420);
+    foley.impact(chest, 'flesh');
     this.fadeAt = game.time + 16;
   }
   // blown apart: the body separates at the joints and the pieces fly
@@ -3749,24 +3912,15 @@ class Enemy {
     if(this.dead && this.vapor !== undefined){ this.updateVapor(dt); return; }
     if(this.dead){
       this.deathT += dt;
-      const k = clamp(this.deathT/0.8,0,1);
-      const fall = Math.sin(k*Math.PI/2)*1.52;
-      // topple in the direction the round was travelling
-      let axis = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), this.deathDir);
-      if(axis.lengthSq()<1e-6) axis.set(1,0,0); else axis.normalize();
-      const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), this.yaw);
-      const fallQ = new THREE.Quaternion().setFromAxisAngle(axis, fall);
-      this.g.quaternion.copy(fallQ).multiply(yawQ);
-      this.g.position.y = lerp(this.g.position.y, 0, dt*4);
-      this.legL.rotation.x = lerp(this.legL.rotation.x, 0.25, dt*4);
-      this.legR.rotation.x = lerp(this.legR.rotation.x, -0.15, dt*4);
-      this.legL.shin.rotation.x = lerp(this.legL.shin.rotation.x, 0.5, dt*4);
-      this.legR.shin.rotation.x = lerp(this.legR.shin.rotation.x, 0.2, dt*4);
-      this.armR.rotation.x = lerp(this.armR.rotation.x, 0.6, dt*4);
-      this.armL.rotation.x = lerp(this.armL.rotation.x, -0.4, dt*4);
-      this.armL.rotation.z = lerp(this.armL.rotation.z, 0, dt*4);
-      this.armR.fore.rotation.x = lerp(this.armR.fore.rotation.x, -0.15, dt*4);
-      this.armL.fore.rotation.x = lerp(this.armL.fore.rotation.x, -0.15, dt*4);
+      this.updateRagdoll(dt);
+      if(!this.thudDone && this.rag && this.rag.chest.p.y < 0.55){
+        this.thudDone = true;
+        const at = this.rag.pelvis.p;
+        foley.step(at, surfaceAt(at.x, at.z), true);
+        foley.cloth(at, 0.4, 1.2);
+        foley.clack(at, {gain:0.5, freq:600});
+        bloodPool(new THREE.Vector3(at.x, 0, at.z));
+      }
       if(game.time > this.fadeAt){
         if(!this.fading){
           this.fading = true; this.fadeK = 1;
@@ -3838,22 +3992,39 @@ class Enemy {
       this.yaw += diff * (1-Math.exp(-9*dt));
       this.g.rotation.y = this.yaw;
     }
-    // gait
-    const sp = Math.hypot(this.vel.x,this.vel.z);
-    this.stepDist += sp*dt;
-    if(this.stepDist > 1.15 && sp>0.5){
-      this.stepDist = 0;
-      foley.step(this.g.position, surfaceAt(this.g.position.x,this.g.position.z), sp>2.6);
+    // ---- gait: stride phase comes from ground covered, not from the clock ----
+    const sp = Math.hypot(this.vel.x, this.vel.z);
+    const moveAmt = clamp(sp/3.2, 0, 1);
+    const runK = clamp((sp-2.0)/1.6, 0, 1);
+    this.gait = (this.gait||0) + sp*dt*2.25;
+    // a footfall lands each half stride
+    const stepIdx = Math.floor(this.gait/Math.PI);
+    if(sp > 0.45 && stepIdx !== this.lastStep){
+      this.lastStep = stepIdx;
+      foley.step(this.g.position, surfaceAt(this.g.position.x,this.g.position.z), runK>0.4);
     }
-    const swing = Math.sin(this.t*sp*2.6)*clamp(sp/3,0,1)*0.7;
-    this.legL.rotation.x = swing; this.legR.rotation.x = -swing;
-    // knees only bend backwards, and only on the trailing leg
-    this.legL.shin.rotation.x = Math.max(0, -swing)*0.9;
-    this.legR.shin.rotation.x = Math.max(0,  swing)*0.9;
-    this.armL.rotation.x = -swing*0.5;
-    this.armL.fore.rotation.x = -0.35 - Math.max(0,swing)*0.3;
+    const swing = Math.sin(this.gait) * (0.5 + 0.42*runK) * moveAmt;
+    this.legL.rotation.x = swing;
+    this.legR.rotation.x = -swing;
+    // knees only fold backwards, and only on the trailing leg
+    this.legL.shin.rotation.x = Math.max(0, -swing)*(0.75 + 0.75*runK);
+    this.legR.shin.rotation.x = Math.max(0,  swing)*(0.75 + 0.75*runK);
+    // hips rise on each step, shoulders counter-rotate, body leans into a run
+    this.g.position.y = Math.abs(Math.sin(this.gait))*0.05*moveAmt;
+    this.torso.rotation.z = Math.sin(this.gait)*0.055*moveAmt;
+    this.torso.rotation.y = -Math.sin(this.gait)*0.11*moveAmt;
+    this.headG.rotation.y = Math.sin(this.gait)*0.07*moveAmt;   // head holds its line
+    this.headG.rotation.x = 0.09*runK;
+    this.armL.rotation.x = -swing*(0.55 + 0.55*runK);
+    this.armL.fore.rotation.x = -0.3 - Math.max(0,swing)*0.45 - 0.45*runK;
+    if(moveAmt < 0.06){                                          // standing: idle sway
+      this.torso.rotation.z = Math.sin(this.t*1.15)*0.02;
+      this.torso.rotation.y = Math.sin(this.t*0.8)*0.03;
+      this.headG.rotation.y = Math.sin(this.t*0.6)*0.05;
+    }
     this.flinch = Math.max(0, this.flinch-dt*3);
-    this.torso.rotation.x = -this.flinch*0.5 + (sp>0.5? Math.sin(this.t*9)*0.02:0);
+    this.torso.rotation.x = -this.flinch*0.5 - 0.13*runK - 0.03*moveAmt
+                            + (moveAmt<0.06? Math.sin(this.t*0.9)*0.015 : 0);
     // rifle levels out as the weapon comes up, and follows the arm otherwise
     const ready = this.state==='engage'?1:0;
     this.readyA = damp(this.readyA||0, ready, 8, dt);
