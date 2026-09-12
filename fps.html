@@ -320,6 +320,10 @@ const randi = (a,b)=>Math.floor(rand(a,b+1));
 const damp  = (a,b,l,dt)=>lerp(a,b,1-Math.exp(-l*dt));
 const TAU = Math.PI*2;
 
+/* Hex colours are authored in sRGB; the renderer works in linear space.
+   Lit materials must decode, or every flat colour renders far too bright. */
+function C(hex){ return new THREE.Color(hex).convertSRGBToLinear(); }
+
 /* Touch device? Everything below scales its budget off this. */
 const isTouch = matchMedia('(pointer:coarse)').matches ||
   ('ontouchstart' in window && (navigator.maxTouchPoints||0) > 0);
@@ -860,17 +864,17 @@ const MAT = {
   gravel:   new THREE.MeshStandardMaterial({map:TEX.gravel, bumpMap:TEX.gravel, bumpScale:0.08, roughness:1, metalness:0}),
   concrete: new THREE.MeshStandardMaterial({map:TEX.concrete, bumpMap:TEX.concrete, bumpScale:0.03, roughness:0.95, metalness:0}),
   metal:    new THREE.MeshStandardMaterial({map:TEX.metal, bumpMap:TEX.metal, bumpScale:0.012, roughness:0.45, metalness:0.85}),
-  steel:    new THREE.MeshStandardMaterial({color:0xd9dde2, roughness:0.34, metalness:0.95}),
+  steel:    new THREE.MeshStandardMaterial({color:C(0xd9dde2), roughness:0.34, metalness:0.95}),
   wood:     new THREE.MeshStandardMaterial({map:TEX.wood, bumpMap:TEX.wood, bumpScale:0.02, roughness:0.88, metalness:0}),
   burlap:   new THREE.MeshStandardMaterial({map:TEX.burlap, bumpMap:TEX.burlap, bumpScale:0.05, roughness:1, metalness:0}),
   paper:    new THREE.MeshStandardMaterial({map:TEX.paper, roughness:0.95, metalness:0, side:THREE.DoubleSide}),
-  gun:      new THREE.MeshStandardMaterial({color:0x2b2e31, roughness:0.42, metalness:0.78}),
-  gunDark:  new THREE.MeshStandardMaterial({color:0x17191b, roughness:0.6,  metalness:0.5}),
-  polymer:  new THREE.MeshStandardMaterial({color:0x3a4038, roughness:0.75, metalness:0.05}),
-  brass:    new THREE.MeshStandardMaterial({color:0xc9a227, roughness:0.28, metalness:1}),
-  glass:    new THREE.MeshStandardMaterial({color:0x9fd8ff, roughness:0.05, metalness:0.2, transparent:true, opacity:0.24}),
-  cloth:    new THREE.MeshStandardMaterial({color:0x4b4a3f, roughness:1, metalness:0}),
-  skin:     new THREE.MeshStandardMaterial({color:0x8a6a52, roughness:0.85, metalness:0})
+  gun:      new THREE.MeshStandardMaterial({color:C(0x2b2e31), roughness:0.42, metalness:0.78}),
+  gunDark:  new THREE.MeshStandardMaterial({color:C(0x17191b), roughness:0.6,  metalness:0.5}),
+  polymer:  new THREE.MeshStandardMaterial({color:C(0x3a4038), roughness:0.75, metalness:0.05}),
+  brass:    new THREE.MeshStandardMaterial({color:C(0xc9a227), roughness:0.28, metalness:1}),
+  glass:    new THREE.MeshStandardMaterial({color:C(0x9fd8ff), roughness:0.05, metalness:0.2, transparent:true, opacity:0.24}),
+  cloth:    new THREE.MeshStandardMaterial({color:C(0x4b4a3f), roughness:1, metalness:0}),
+  skin:     new THREE.MeshStandardMaterial({color:C(0x8a6a52), roughness:0.85, metalness:0})
 };
 
 /* ---- lighting: low sun, warm key, cool sky fill -------------------------- */
@@ -923,7 +927,7 @@ vmScene.add(vmKey, vmFill, vmRim, new THREE.AmbientLight(0xffffff,0.18));
     }
   }
   ridge.computeVertexNormals();
-  const rm = new THREE.Mesh(ridge, new THREE.MeshBasicMaterial({color:0x5e5568, side:THREE.BackSide, fog:false}));
+  const rm = new THREE.Mesh(ridge, new THREE.MeshBasicMaterial({color:C(0x5e5568), side:THREE.BackSide, fog:false}));
   rm.position.y = 0; scene.add(rm);
 }
 
@@ -1103,7 +1107,7 @@ for(let d=10; d<=50; d+=10){
 function container(x,z,ry,color){
   const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y=ry; world.add(g);
   const m = new THREE.MeshStandardMaterial({map:TEX.metal, bumpMap:TEX.metal, bumpScale:0.02,
-     color:color||0x7a6a4a, roughness:0.62, metalness:0.7});
+     color:C(color||0x7a6a4a), roughness:0.62, metalness:0.7});
   const body = new THREE.Mesh(new THREE.BoxGeometry(6.1,2.6,2.44), m);
   body.position.y=1.3; body.castShadow=body.receiveShadow=true; body.userData.mat='metal';
   g.add(body); shootables.push(body);
@@ -1122,7 +1126,7 @@ function crate(x,y,z,s,ry){
 }
 function barrel(x,z){
   const m = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.94,18), 
-    new THREE.MeshStandardMaterial({map:TEX.metal,color:0x8a5a3a,roughness:0.6,metalness:0.6}));
+    new THREE.MeshStandardMaterial({map:TEX.metal,color:C(0x8a5a3a),roughness:0.6,metalness:0.6}));
   m.position.set(x,0.47,z); m.castShadow=m.receiveShadow=true; m.userData.mat='metal';
   world.add(m); shootables.push(m);
   colliders.push({min:new THREE.Vector3(x-0.32,0,z-0.32), max:new THREE.Vector3(x+0.32,0.94,z+0.32)});
@@ -1207,7 +1211,7 @@ function cyl(r1,r2,h,seg,mat,open){
   return new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,seg||14,1,!!open), mat);
 }
 // optic housings are hollow and visible from the inside
-const MAT_OPTIC = new THREE.MeshStandardMaterial({color:0x16181a, roughness:0.55, metalness:0.55, side:THREE.DoubleSide});
+const MAT_OPTIC = new THREE.MeshStandardMaterial({color:C(0x16181a), roughness:0.55, metalness:0.55, side:THREE.DoubleSide});
 function bx(w,h,d,mat){ return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); }
 function put(m,x,y,z,rx,ry,rz){ m.position.set(x,y,z); if(rx||ry||rz) m.rotation.set(rx||0,ry||0,rz||0); return m; }
 
@@ -1372,7 +1376,8 @@ const sparkFX = new Particles(scene, isTouch?240:500, THREE.AdditiveBlending, -1
 const smokeFX = new Particles(scene, isTouch?150:300, THREE.NormalBlending, 0.35);
 
 const C_DUST = new THREE.Color(0xb8a488), C_CONC=new THREE.Color(0xbfbdb6), C_WOOD=new THREE.Color(0x7d6242),
-      C_SPARK= new THREE.Color(0xffd08a), C_BLOOD=new THREE.Color(0x7a1512), C_SMOKE=new THREE.Color(0x8e8e8e);
+      C_SPARK= new THREE.Color(0xffd08a), C_BLOOD=new THREE.Color(0x6e0f0d), C_SMOKE=new THREE.Color(0x8e8e8e),
+      C_MIST = new THREE.Color(0x5e1512), C_FLASH=new THREE.Color(0xffe3b0);
 
 /* ---- bullet holes -------------------------------------------------------- */
 const holeTex = canvasTex(64,(g,s)=>{
@@ -1402,6 +1407,85 @@ function bulletHole(point, normal, scale){
   m.rotateZ(Math.random()*TAU);
   m.position.copy(point).addScaledVector(normal, 0.008);
   holes.push(m);
+}
+
+/* ---- blood ---------------------------------------------------------------- */
+const bloodTex = canvasTex(128,(g,sz)=>{
+  g.clearRect(0,0,sz,sz);
+  const blob=(x,y,r,a)=>{
+    const grd=g.createRadialGradient(x,y,0,x,y,r);
+    grd.addColorStop(0,`rgba(96,6,6,${a})`);
+    grd.addColorStop(0.55,`rgba(72,4,4,${a*0.8})`);
+    grd.addColorStop(1,'rgba(58,3,3,0)');
+    g.fillStyle=grd; g.beginPath(); g.arc(x,y,r,0,TAU); g.fill();
+  };
+  blob(sz/2,sz/2,sz*0.30,0.95);
+  for(let i=0;i<16;i++){                      // satellite spatter
+    const a=Math.random()*TAU, d=rand(sz*0.16,sz*0.46);
+    blob(sz/2+Math.cos(a)*d, sz/2+Math.sin(a)*d, rand(sz*0.02,sz*0.10), rand(0.45,0.95));
+  }
+  for(let i=0;i<10;i++){                       // cast-off streaks
+    const a=Math.random()*TAU;
+    g.strokeStyle=`rgba(80,5,5,${rand(.3,.7)})`; g.lineWidth=rand(1,3.5);
+    g.beginPath(); g.moveTo(sz/2+Math.cos(a)*sz*0.2, sz/2+Math.sin(a)*sz*0.2);
+    g.lineTo(sz/2+Math.cos(a)*rand(sz*0.3,sz*0.49), sz/2+Math.sin(a)*rand(sz*0.3,sz*0.49)); g.stroke();
+  }
+});
+bloodTex.wrapS = bloodTex.wrapT = THREE.ClampToEdgeWrapping;
+const bloodMat = new THREE.MeshBasicMaterial({map:bloodTex, transparent:true, depthWrite:false,
+  polygonOffset:true, polygonOffsetFactor:-5, polygonOffsetUnits:-5, opacity:0.9});
+const splats = []; const SPLAT_MAX = isTouch?18:40;
+function bloodSplat(point, normal, scale){
+  let m;
+  if(splats.length>=SPLAT_MAX){ m = splats.shift(); }
+  else { m = new THREE.Mesh(new THREE.PlaneGeometry(1,1), bloodMat.clone()); scene.add(m); }
+  m.material.opacity = rand(0.65,0.95);
+  m.scale.setScalar(scale||rand(0.4,0.9));
+  _q.setFromUnitVectors(_up, normal);
+  m.quaternion.copy(_q); m.rotateZ(Math.random()*TAU);
+  m.position.copy(point).addScaledVector(normal, 0.012);
+  splats.push(m);
+  return m;
+}
+// spray that finds the wall or ground behind the target
+function bloodSpray(point, dir, amount){
+  for(let i=0;i<amount;i++){
+    const v = dir.clone().multiplyScalar(rand(2,7))
+      .add(new THREE.Vector3(rand(-2.4,2.4), rand(-0.6,2.6), rand(-2.4,2.4)));
+    dustFX.spawn(point, v, C_BLOOD, rand(0.012,0.05), rand(0.35,0.9), 2.4, 0.6);
+  }
+  for(let i=0;i<Math.ceil(amount*0.4);i++){   // heavier droplets
+    dustFX.spawn(point, dir.clone().multiplyScalar(rand(1,4))
+      .add(new THREE.Vector3(rand(-1.4,1.4), rand(0.4,2.4), rand(-1.4,1.4))),
+      C_BLOOD, rand(0.03,0.07), rand(0.7,1.4), 0.8, 0);
+  }
+  for(let i=0;i<3;i++)                         // fine mist, hangs a moment
+    smokeFX.spawn(point, dir.clone().multiplyScalar(rand(0.4,1.6))
+      .add(new THREE.Vector3(rand(-.5,.5),rand(0,.6),rand(-.5,.5))),
+      C_MIST, rand(0.10,0.20), rand(0.5,1.0), 1.6, 2.4);
+  // cast onto whatever is behind
+  _ray.set(point, dir); _ray.far = 4.5;
+  const h = _ray.intersectObjects(shootables, false);
+  _ray.far = 400;
+  if(h.length){
+    const n = h[0].face ? h[0].face.normal.clone().transformDirection(h[0].object.matrixWorld) : dir.clone().negate();
+    bloodSplat(h[0].point, n, rand(0.3,0.75));
+  }
+}
+function bloodPool(pos){
+  const m = bloodSplat(new THREE.Vector3(pos.x, 0.015, pos.z), new THREE.Vector3(0,1,0), 0.2);
+  m.userData.grow = {t:0, to:rand(1.1,1.8)};
+  return m;
+}
+function updateSplats(dt){
+  for(const m of splats){
+    const g = m.userData.grow;
+    if(!g) continue;
+    g.t += dt;
+    const k = Math.min(1, g.t/2.2);
+    m.scale.setScalar(lerp(0.2, g.to, Math.sqrt(k)));
+    if(k>=1) m.userData.grow = null;
+  }
 }
 
 /* ---- brass ---------------------------------------------------------------- */
@@ -1483,26 +1567,47 @@ const tracerMat = new THREE.MeshBasicMaterial({color:0xffd9a0, transparent:true,
 const tracerGeo = new THREE.CylinderGeometry(0.012,0.004,1,6,1,true);
 tracerGeo.rotateX(Math.PI/2); tracerGeo.translate(0,0,-0.5);
 const tracers = [];
+const glowGeo = new THREE.PlaneGeometry(0.16,0.16);
+const glowMat = new THREE.MeshBasicMaterial({color:0xffcf8a, transparent:true, opacity:0.6,
+  blending:THREE.AdditiveBlending, depthWrite:false});
 function tracer(from, to, speed, color){
-  const m = new THREE.Mesh(tracerGeo, color? tracerMat.clone() : tracerMat);
+  const m = new THREE.Mesh(tracerGeo, tracerMat.clone());
   if(color) m.material.color.setHex(color);
   scene.add(m);
+  const glow = new THREE.Mesh(glowGeo, glowMat.clone());
+  if(color) glow.material.color.setHex(color);
+  scene.add(glow);
   const dir = to.clone().sub(from); const dist = dir.length(); dir.normalize();
-  tracers.push({m, from:from.clone(), dir, dist, d:0, speed:speed||780, len:Math.min(9, dist*0.5)});
-  if(tracers.length>40){ const t=tracers.shift(); scene.remove(t.m); }
+  tracers.push({m, glow, from:from.clone(), dir, dist, d:0, speed:speed||780, len:Math.min(9, dist*0.5)});
+  if(tracers.length>(isTouch?24:40)){
+    const t=tracers.shift(); scene.remove(t.m); if(t.glow) scene.remove(t.glow);
+  }
 }
 function updateTracers(dt){
   for(let i=tracers.length-1;i>=0;i--){
     const t=tracers[i];
     t.d += t.speed*dt;
     const head = Math.min(t.d, t.dist);
-    const tail = Math.max(0, head - t.len);
+    const tail = t.d - t.len;                 // unclamped: this is what retires the tracer
+    if(tail >= t.dist || t.d > t.dist + t.len + 0.5){
+      scene.remove(t.m);
+      if(t.glow) scene.remove(t.glow);
+      tracers.splice(i,1);
+      continue;
+    }
+    const vis = Math.max(0.01, head - Math.max(0, tail));
     const p = t.from.clone().addScaledVector(t.dir, head);
     t.m.position.copy(p);
     t.m.lookAt(p.clone().addScaledVector(t.dir,1));
-    t.m.scale.set(1,1,Math.max(0.01, head-tail));
-    t.m.material.opacity = 0.85 * (1 - head/Math.max(1,t.dist)*0.35);
-    if(tail >= t.dist){ scene.remove(t.m); tracers.splice(i,1); }
+    t.m.scale.set(1,1,vis);
+    const fade = clamp(1 - Math.max(0, tail)/Math.max(1,t.dist), 0.15, 1);
+    t.m.material.opacity = 0.9*fade;
+    if(t.glow){                                // hot head of the round
+      t.glow.position.copy(p);
+      t.glow.material.opacity = 0.55*fade*(t.d < t.dist ? 1 : 0);
+      t.glow.scale.setScalar(1 + Math.min(1.6, t.d*0.004));
+      t.glow.lookAt(camera.position);
+    }
   }
 }
 
@@ -1517,13 +1622,23 @@ const flashStar = new THREE.Mesh(new THREE.PlaneGeometry(0.22,0.22), flashMat.cl
 flashStar.visible=false;
 let flashT = 0;
 function muzzleFlash(localPos, worldPos, scale){
+  const sc = scale||1;
   flashMesh.visible = flashStar.visible = true;
-  flashMesh.position.copy(localPos); flashMesh.scale.setScalar(scale||1);
-  flashStar.position.copy(localPos); flashStar.scale.setScalar((scale||1)*rand(0.7,1.25));
+  flashMesh.position.copy(localPos);
+  flashMesh.scale.set(sc*rand(0.8,1.3), sc*rand(0.8,1.3), sc*rand(0.9,1.6));
+  flashMesh.rotation.z = Math.random()*TAU;
+  flashStar.position.copy(localPos);
+  flashStar.scale.setScalar(sc*rand(0.8,1.5));
   flashStar.rotation.z = Math.random()*TAU;
-  flashT = 0.055;
-  flashLightV.position.copy(localPos); flashLightV.intensity = 9*(scale||1);
-  flashLightW.position.copy(worldPos); flashLightW.intensity = 26*(scale||1);
+  flashT = 0.06;
+  flashLightV.position.copy(localPos); flashLightV.intensity = 12*sc;
+  flashLightW.position.copy(worldPos); flashLightW.intensity = 34*sc;
+  // burning powder thrown forward
+  const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  for(let i=0;i<Math.round(6*sc);i++)
+    sparkFX.spawn(worldPos, fwd.clone().multiplyScalar(rand(3,11))
+      .add(new THREE.Vector3(rand(-1.6,1.6),rand(-1,1.6),rand(-1.6,1.6))),
+      C_SPARK, rand(0.012,0.03), rand(0.10,0.34), 2.2, -0.4);
 }
 function updateFlash(dt){
   if(flashT>0){
@@ -1540,14 +1655,25 @@ function updateFlash(dt){
 function impactFX(point, normal, mat, heavy){
   const n = normal;
   const col = mat==='sand'? C_DUST : mat==='wood'? C_WOOD : mat==='flesh'? C_BLOOD : C_CONC;
-  const count = mat==='flesh'? 14 : (heavy?16:10);
+  const count = mat==='flesh'? 14 : (heavy?22:14);
+  if(mat!=='flesh'){
+    // hot flash at the point of impact
+    for(let i=0;i<3;i++)
+      sparkFX.spawn(point, n.clone().multiplyScalar(rand(0.5,2)), C_FLASH, rand(0.05,0.12), rand(0.04,0.10), 4, -0.5);
+    // dust ring hugging the surface
+    for(let i=0;i<6;i++){
+      const t = new THREE.Vector3(rand(-1,1),rand(-1,1),rand(-1,1)).cross(n).normalize();
+      dustFX.spawn(point, t.multiplyScalar(rand(1.2,3.4)).addScaledVector(n, rand(0.2,1)),
+        col, rand(0.05,0.13), rand(0.4,0.9), 3.2, 2.4);
+    }
+  }
   for(let i=0;i<count;i++){
     const v = n.clone().multiplyScalar(rand(1.2,4.2))
       .add(new THREE.Vector3(rand(-1.6,1.6),rand(-0.4,2.2),rand(-1.6,1.6)));
     dustFX.spawn(point, v, col, rand(0.02,0.075)*(heavy?1.6:1), rand(0.5,1.3), rand(1.6,3.4), 1.6);
   }
   if(mat==='metal'){
-    for(let i=0;i<14;i++){
+    for(let i=0;i<22;i++){
       const v = n.clone().multiplyScalar(rand(3,9)).add(new THREE.Vector3(rand(-3,3),rand(-1,4),rand(-3,3)));
       sparkFX.spawn(point, v, C_SPARK, rand(0.008,0.022), rand(0.25,0.75), 1.2, -0.6);
     }
@@ -1978,9 +2104,7 @@ function handleHit(h, dir, d){
     const mul = zone==='head'? d.headMul : zone==='limb'? d.limbMul : 1;
     const dmg = d.dmg*mul*falloff;
     impactFX(h.point, normal, 'flesh', mul>1.5);
-    for(let i=0;i<10;i++)
-      dustFX.spawn(h.point, dir.clone().multiplyScalar(rand(1,4)).add(new THREE.Vector3(rand(-1,1),rand(0,2),rand(-1,1))),
-        C_BLOOD, rand(0.015,0.05), rand(0.4,0.9), 2.2, 1.2);
+    bloodSpray(h.point, dir, zone==='head'? 26 : 15);
     const dead = e.damage(dmg, dir, zone);
     hitmarker(dead, zone==='head');
     if(dead) onKill(e, zone==='head');
@@ -2242,10 +2366,18 @@ const blockers = [];   // solid world meshes used for line-of-sight
 world.traverse(o=>{ if(o.isMesh) blockers.push(o); });
 
 const ENEMY_MATS = {
-  gear: new THREE.MeshStandardMaterial({color:0x3c4038, roughness:0.92, metalness:0.03}),
-  vest: new THREE.MeshStandardMaterial({color:0x2b2f2a, roughness:0.8, metalness:0.1}),
-  helm: new THREE.MeshStandardMaterial({color:0x33382f, roughness:0.6, metalness:0.25}),
-  face: new THREE.MeshStandardMaterial({color:0x8a6a52, roughness:0.9, metalness:0})
+  fatigue: new THREE.MeshStandardMaterial({color:C(0x5a5b43), roughness:0.95, metalness:0.02}),
+  fatigue2:new THREE.MeshStandardMaterial({color:C(0x4a4b37), roughness:0.95, metalness:0.02}),
+  plate:   new THREE.MeshStandardMaterial({color:C(0x33372c), roughness:0.78, metalness:0.08}),
+  pouch:   new THREE.MeshStandardMaterial({color:C(0x3e4232), roughness:0.9,  metalness:0.04}),
+  webbing: new THREE.MeshStandardMaterial({color:C(0x2a2d24), roughness:0.95, metalness:0.03}),
+  helm:    new THREE.MeshStandardMaterial({color:C(0x41442f), roughness:0.62, metalness:0.22}),
+  gear:    new THREE.MeshStandardMaterial({color:C(0x24261f), roughness:0.7,  metalness:0.25}),
+  boot:    new THREE.MeshStandardMaterial({color:C(0x231d17), roughness:0.85, metalness:0.06}),
+  glove:   new THREE.MeshStandardMaterial({color:C(0x2b2620), roughness:0.9,  metalness:0.05}),
+  mask:    new THREE.MeshStandardMaterial({color:C(0x1f2019), roughness:0.95, metalness:0.02}),
+  visor:   new THREE.MeshStandardMaterial({color:C(0x15202a), roughness:0.2,  metalness:0.6}),
+  face:    new THREE.MeshStandardMaterial({color:C(0x8a6a52), roughness:0.9,  metalness:0})
 };
 
 class Enemy {
@@ -2264,32 +2396,97 @@ class Enemy {
   }
   build(){
     const M = ENEMY_MATS;
-    const mk = (geo,mat,x,y,z,zone)=>{
+    // decorative part
+    let bulk = 0;
+    const d = (geo,mat,x,y,z,parent)=>{
       const m = new THREE.Mesh(geo,mat);
-      m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
-      m.userData.enemy = this; m.userData.zone = zone; m.userData.mat='flesh';
-      this.g.add(m); enemyHitboxes.push(m); return m;
+      m.position.set(x,y,z);
+      m.castShadow = !isTouch || bulk++ < 8;      // phones: only the body casts shadows
+      m.receiveShadow = true;
+      (parent||this.g).add(m); return m;
     };
-    this.torso = mk(new THREE.BoxGeometry(0.44,0.56,0.26), M.vest, 0,1.18,0,'chest');
-    mk(new THREE.BoxGeometry(0.40,0.30,0.24), M.gear, 0,0.82,0,'chest');       // pelvis
-    this.head = mk(new THREE.SphereGeometry(0.115,14,12), M.face, 0,1.62,0,'head');
-    this.helmet = mk(new THREE.SphereGeometry(0.135,14,12,0,TAU,0,Math.PI*0.62), M.helm, 0,1.63,0,'head');
-    this.armL = mk(new THREE.BoxGeometry(0.13,0.52,0.13), M.gear, -0.29,1.14,0,'limb');
-    this.armR = mk(new THREE.BoxGeometry(0.13,0.52,0.13), M.gear,  0.29,1.14,0,'limb');
-    this.legL = mk(new THREE.BoxGeometry(0.16,0.72,0.17), M.gear, -0.12,0.38,0,'limb');
-    this.legR = mk(new THREE.BoxGeometry(0.16,0.72,0.17), M.gear,  0.12,0.38,0,'limb');
-    [this.armL,this.armR,this.legL,this.legR].forEach(m=>{ m.geometry.translate(0,-0.26,0); m.position.y+=0.26; });
-    // slung rifle
+    // part that can be shot
+    const hit = (m,zone)=>{
+      m.userData.enemy = this; m.userData.zone = zone; m.userData.mat = 'flesh';
+      enemyHitboxes.push(m); return m;
+    };
+    const B = (w,h,dp)=>new THREE.BoxGeometry(w,h,dp);
+
+    /* ---- torso: fatigues under a plate carrier ---- */
+    this.torso = new THREE.Group(); this.torso.position.set(0,1.22,0); this.g.add(this.torso);
+    hit(d(B(0.40,0.50,0.22), M.fatigue, 0,0,0, this.torso), 'chest');
+    d(B(0.42,0.34,0.28), M.plate,   0, 0.02, 0, this.torso);            // carrier
+    d(B(0.30,0.05,0.30), M.webbing, 0,-0.14, 0, this.torso);            // cummerbund
+    for(let i=-1;i<=1;i++)                                              // rifle mag pouches
+      d(B(0.095,0.135,0.07), M.pouch, i*0.115,-0.05, 0.165, this.torso);
+    d(B(0.075,0.11,0.06), M.pouch,  0.185, 0.04, 0.10, this.torso);     // utility
+    d(B(0.07,0.13,0.06),  M.gear,  -0.185, 0.06, 0.10, this.torso);     // radio
+    d(B(0.02,0.02,0.10),  M.gear,  -0.185, 0.16, 0.08, this.torso);     // antenna
+    d(B(0.085,0.30,0.045), M.webbing, -0.155, 0.16, 0.085, this.torso); // shoulder straps
+    d(B(0.085,0.30,0.045), M.webbing,  0.155, 0.16, 0.085, this.torso);
+    d(B(0.085,0.30,0.045), M.webbing, -0.155, 0.16,-0.085, this.torso);
+    d(B(0.085,0.30,0.045), M.webbing,  0.155, 0.16,-0.085, this.torso);
+    d(B(0.24,0.09,0.20),  M.fatigue2, 0, 0.28, 0, this.torso);          // collar
+    d(B(0.13,0.05,0.05),  M.gear,     0.10, 0.24,-0.10, this.torso);    // IR strobe
+
+    /* ---- pelvis + belt kit ---- */
+    hit(d(B(0.34,0.24,0.21), M.fatigue, 0,0.86,0), 'chest');
+    d(B(0.37,0.07,0.23), M.webbing, 0,0.79,0);
+    d(B(0.11,0.15,0.08), M.pouch, -0.21,0.74, 0.02);                    // dump pouch
+    d(B(0.08,0.16,0.07), M.gear,   0.20,0.72, 0.03);                    // holster
+
+    /* ---- head: balaclava, helmet, ear pro, NVG mount ---- */
+    this.headG = new THREE.Group(); this.headG.position.set(0,1.60,0); this.g.add(this.headG);
+    this.head = hit(d(new THREE.SphereGeometry(0.105,14,12), M.mask, 0,0,0, this.headG), 'head');
+    d(B(0.12,0.045,0.04), M.face,  0, 0.012, 0.095, this.headG);        // eye strip
+    hit(d(new THREE.SphereGeometry(0.128,16,12,0,TAU,0,Math.PI*0.58), M.helm, 0,0.022,0, this.headG), 'head');
+    const rim = d(new THREE.TorusGeometry(0.126,0.013,6,18), M.helm, 0,0.020,0, this.headG);
+    rim.rotation.x = Math.PI/2;
+    d(B(0.055,0.05,0.035), M.gear,  0, 0.10, 0.105, this.headG);        // NVG shroud
+    d(B(0.035,0.075,0.07), M.gear, -0.115,-0.005,0, this.headG);        // ear pro
+    d(B(0.035,0.075,0.07), M.gear,  0.115,-0.005,0, this.headG);
+    d(B(0.20,0.042,0.03),  M.visor, 0, 0.062, 0.088, this.headG);       // goggles
+    d(B(0.16,0.05,0.05),   M.mask,  0,-0.055, 0.055, this.headG);       // face wrap
+
+    /* ---- limbs: jointed, so they read as a person walking ---- */
+    const arm = (side)=>{
+      const g = new THREE.Group(); g.position.set(side*0.245, 1.40, 0); this.g.add(g);
+      hit(d(B(0.115,0.26,0.115), M.fatigue, 0,-0.13,0, g), 'limb');     // upper
+      d(B(0.135,0.10,0.135), M.plate, 0,-0.02,0, g);                    // shoulder pad
+      const fore = new THREE.Group(); fore.position.set(0,-0.26,0); g.add(fore);
+      hit(d(B(0.10,0.25,0.10), M.fatigue2, 0,-0.125,0, fore), 'limb');
+      d(B(0.095,0.09,0.115), M.glove, 0,-0.28,0.01, fore);              // glove
+      g.fore = fore;
+      return g;
+    };
+    this.armL = arm(-1); this.armR = arm(1);
+    const leg = (side)=>{
+      const g = new THREE.Group(); g.position.set(side*0.115, 0.80, 0); this.g.add(g);
+      hit(d(B(0.155,0.40,0.16), M.fatigue, 0,-0.20,0, g), 'limb');      // thigh
+      const shin = new THREE.Group(); shin.position.set(0,-0.40,0); g.add(shin);
+      hit(d(B(0.135,0.36,0.14), M.fatigue2, 0,-0.18,0, shin), 'limb');
+      d(B(0.145,0.10,0.10), M.gear, 0,-0.02,0.055, shin);               // knee pad
+      d(B(0.145,0.10,0.24), M.boot, 0,-0.37,0.035, shin);               // boot
+      g.shin = shin;
+      return g;
+    };
+    this.legL = leg(-1); this.legR = leg(1);
+
+    /* ---- rifle ---- */
     this.gun = new THREE.Group();
-    const r1 = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.07,0.34), MAT.gun); r1.position.z=-0.12;
-    const r2 = new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,0.3,8), MAT.gunDark);
+    const r1 = new THREE.Mesh(B(0.05,0.075,0.34), MAT.gun); r1.position.z=-0.12;
+    const r2 = new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,0.30,8), MAT.gunDark);
     r2.rotation.x=Math.PI/2; r2.position.set(0,0.012,-0.42);
-    const r3 = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.15,0.06), MAT.polymer); r3.position.set(0,-0.10,-0.14);
-    this.gun.add(r1,r2,r3);
+    const r3 = new THREE.Mesh(B(0.04,0.15,0.06), MAT.polymer); r3.position.set(0,-0.10,-0.14);
+    const r4 = new THREE.Mesh(B(0.05,0.065,0.16), MAT.polymer); r4.position.set(0,-0.005,0.14);  // stock
+    const r5 = new THREE.Mesh(B(0.032,0.042,0.05), MAT.gunDark); r5.position.set(0,0.058,-0.10); // optic
+    const r6 = new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.018,0.065,10), MAT.gunDark);
+    r6.rotation.x=Math.PI/2; r6.position.set(0,0.012,-0.60);                                     // flash hider
+    this.gun.add(r1,r2,r3,r4,r5,r6);
     this.gun.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
-    this.gun.position.set(0.22,1.28,-0.12);
-    this.g.add(this.gun);
-    this.muzzleLocal = new THREE.Vector3(0,0.012,-0.58);
+    this.armR.fore.add(this.gun);            // carried by the firing hand
+    this.gun.position.set(0.02,-0.30,-0.12);
+    this.muzzleLocal = new THREE.Vector3(0,0.012,-0.63);
   }
   muzzleWorld(){
     return this.gun.localToWorld(this.muzzleLocal.clone());
@@ -2317,6 +2514,9 @@ class Enemy {
     this.dead = true;
     this.deathT = 0;
     this.deathDir = (dir||new THREE.Vector3(0,0,1)).clone().setY(0).normalize();
+    const chest = this.torso.getWorldPosition(new THREE.Vector3());
+    bloodSpray(chest, this.deathDir.clone(), 22);
+    bloodPool(this.g.position);
     for(let i=enemyHitboxes.length-1;i>=0;i--)
       if(enemyHitboxes[i].userData.enemy===this) enemyHitboxes.splice(i,1);
     foley.impact(this.g.position.clone().setY(1.2), 'flesh');
@@ -2371,8 +2571,13 @@ class Enemy {
       this.g.position.y = lerp(this.g.position.y, 0, dt*4);
       this.legL.rotation.x = lerp(this.legL.rotation.x, 0.25, dt*4);
       this.legR.rotation.x = lerp(this.legR.rotation.x, -0.15, dt*4);
+      this.legL.shin.rotation.x = lerp(this.legL.shin.rotation.x, 0.5, dt*4);
+      this.legR.shin.rotation.x = lerp(this.legR.shin.rotation.x, 0.2, dt*4);
       this.armR.rotation.x = lerp(this.armR.rotation.x, 0.6, dt*4);
       this.armL.rotation.x = lerp(this.armL.rotation.x, -0.4, dt*4);
+      this.armL.rotation.z = lerp(this.armL.rotation.z, 0, dt*4);
+      this.armR.fore.rotation.x = lerp(this.armR.fore.rotation.x, -0.15, dt*4);
+      this.armL.fore.rotation.x = lerp(this.armL.fore.rotation.x, -0.15, dt*4);
       if(game.time > this.fadeAt){
         this.g.traverse(o=>{ if(o.isMesh && o.material.transparent!==true){ o.material = o.material.clone(); o.material.transparent=true; } });
         this.g.traverse(o=>{ if(o.isMesh) o.material.opacity = Math.max(0, o.material.opacity-dt*0.5); });
@@ -2443,14 +2648,26 @@ class Enemy {
     }
     const swing = Math.sin(this.t*sp*2.6)*clamp(sp/3,0,1)*0.7;
     this.legL.rotation.x = swing; this.legR.rotation.x = -swing;
+    // knees only bend backwards, and only on the trailing leg
+    this.legL.shin.rotation.x = Math.max(0, -swing)*0.9;
+    this.legR.shin.rotation.x = Math.max(0,  swing)*0.9;
     this.armL.rotation.x = -swing*0.5;
+    this.armL.fore.rotation.x = -0.35 - Math.max(0,swing)*0.3;
     this.flinch = Math.max(0, this.flinch-dt*3);
     this.torso.rotation.x = -this.flinch*0.5 + (sp>0.5? Math.sin(this.t*9)*0.02:0);
-    // rifle held toward the player when engaging
+    // rifle levels out as the weapon comes up, and follows the arm otherwise
     const ready = this.state==='engage'?1:0;
-    this.gun.position.set(lerp(0.22,0.10,ready), lerp(1.28,1.42,ready), lerp(-0.12,-0.18,ready));
-    this.gun.rotation.set(lerp(0.5,0,ready), 0, lerp(0.35,0,ready));
-    this.armR.rotation.x = lerp(-swing*0.5, -1.35, ready);
+    this.readyA = damp(this.readyA||0, ready, 8, dt);
+    const rd = this.readyA;
+    this.armR.rotation.x = lerp(-swing*0.5, -1.25, rd);
+    this.armR.rotation.z = lerp(0, -0.16, rd);
+    this.armR.fore.rotation.x = lerp(-0.3, -0.62, rd);
+    this.armL.rotation.z = lerp(0, 0.62, rd);         // support hand comes across
+    this.armL.rotation.x = lerp(this.armL.rotation.x, -1.05, rd);
+    this.armL.fore.rotation.x = lerp(this.armL.fore.rotation.x, -0.75, rd);
+    // keep the barrel level in body space whatever the arm is doing
+    this.gun.rotation.x = -(this.armR.rotation.x + this.armR.fore.rotation.x) - lerp(0.35,0,rd);
+    this.gun.rotation.z = -this.armR.rotation.z;
   }
   pickTarget(dist){
     // move to a spot nearer the player, biased toward nearby cover
@@ -2468,9 +2685,14 @@ class Enemy {
   }
 }
 function muzzleFlashAt(pos){
-  for(let i=0;i<5;i++)
-    sparkFX.spawn(pos, new THREE.Vector3(rand(-2,2),rand(-1,2),rand(-2,2)), C_SPARK, rand(0.02,0.06), rand(0.04,0.12), 3, 1);
-  flashLightW.position.copy(pos); flashLightW.intensity = 14;
+  for(let i=0;i<8;i++)
+    sparkFX.spawn(pos, new THREE.Vector3(rand(-2.5,2.5),rand(-1,2.5),rand(-2.5,2.5)), C_SPARK,
+      rand(0.02,0.06), rand(0.04,0.14), 3, 1);
+  for(let i=0;i<2;i++)
+    smokeFX.spawn(pos, new THREE.Vector3(rand(-.6,.6),rand(0,.8),rand(-.6,.6)), C_SMOKE,
+      rand(0.06,0.14), rand(0.5,1.1), 1.4, 2.6);
+  flashLightW.position.copy(pos); flashLightW.intensity = 16;
+  flashT = Math.max(flashT, 0.05);      // without this the light never decays
 }
 
 /* ============================================================================
@@ -2611,7 +2833,7 @@ const SPAWNS = [
 ];
 function startWave(){
   game.wave++;
-  const n = Math.min(9, 2 + game.wave);
+  const n = Math.min(isTouch? 5 : 9, 2 + game.wave);
   toast('WAVE ' + game.wave);
   killfeed('<b>WAVE ' + game.wave + '</b> inbound');
   for(let i=0;i<n;i++){
@@ -3084,7 +3306,7 @@ function frameLoop(now){
     updateWeapon(dt);
     weapon.model.updateMatrix();
     targetsUpdate(dt);
-    updateShells(dt); updateDebris(dt); updateTracers(dt); updateFlash(dt);
+    updateShells(dt); updateDebris(dt); updateTracers(dt); updateFlash(dt); updateSplats(dt);
     dustFX.update(dt); sparkFX.update(dt); smokeFX.update(dt);
     for(let i=enemies.length-1;i>=0;i--) enemies[i].update(dt);
 
