@@ -153,13 +153,24 @@ body.touch #killfeed{font-size:11px;right:calc(84px + env(safe-area-inset-right)
 #t-reload{width:58px;height:58px;right:calc(122px + env(safe-area-inset-right));bottom:calc(56px + env(safe-area-inset-bottom))}
 #t-jump{width:52px;height:52px;right:calc(34px + env(safe-area-inset-right));bottom:calc(12px + env(safe-area-inset-bottom))}
 #t-crouch{width:52px;height:52px;right:calc(190px + env(safe-area-inset-right));bottom:calc(18px + env(safe-area-inset-bottom))}
-#t-focus{width:48px;height:48px;right:calc(190px + env(safe-area-inset-right));bottom:calc(96px + env(safe-area-inset-bottom));font-size:10px}
+#t-focus{width:46px;height:46px;right:calc(252px + env(safe-area-inset-right));bottom:calc(62px + env(safe-area-inset-bottom));font-size:10px}
 #t-pause{width:40px;height:40px;right:calc(16px + env(safe-area-inset-right));top:calc(10px + env(safe-area-inset-top));font-size:14px}
-#t-guns{position:absolute;pointer-events:none;right:calc(16px + env(safe-area-inset-right));
-  top:calc(58px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:6px}
-.tgun{pointer-events:auto;width:52px;padding:5px 0;border:1px solid rgba(255,255,255,.25);border-radius:6px;
-  background:rgba(10,14,20,.32);color:rgba(255,255,255,.75);font-size:9px;letter-spacing:1px;text-align:center;font-weight:600}
-.tgun.on{border-color:var(--amber);color:var(--amber);background:rgba(255,196,107,.16)}
+/* weapon swap lives in the thumb cluster; the right edge stays free for looking */
+#t-swap{width:58px;height:58px;right:calc(190px + env(safe-area-inset-right));
+  bottom:calc(96px + env(safe-area-inset-bottom));font-size:10px;letter-spacing:1px}
+#t-swap.on{background:rgba(255,196,107,.30)}
+#t-swap::after{content:'';position:absolute;right:7px;bottom:6px;width:0;height:0;
+  border-left:4px solid transparent;border-right:4px solid transparent;
+  border-bottom:5px solid rgba(255,255,255,.45)}
+#t-guns{position:absolute;pointer-events:none;right:calc(196px + env(safe-area-inset-right));
+  bottom:calc(160px + env(safe-area-inset-bottom));display:flex;flex-direction:column-reverse;gap:6px;
+  opacity:0;transform:translateY(8px);transition:opacity .12s,transform .12s}
+#t-guns.open{opacity:1;transform:translateY(0)}
+.tgun{pointer-events:none;width:82px;padding:8px 0;border:1px solid rgba(255,255,255,.3);border-radius:7px;
+  background:rgba(10,14,20,.66);color:rgba(255,255,255,.85);font-size:11px;letter-spacing:1px;
+  text-align:center;font-weight:600;backdrop-filter:blur(3px)}
+#t-guns.open .tgun{pointer-events:auto}
+.tgun.on{border-color:var(--amber);color:var(--amber);background:rgba(255,196,107,.22)}
 #stick{position:absolute;width:118px;height:118px;border-radius:50%;border:1px solid rgba(255,255,255,.2);
   background:rgba(10,14,20,.22);opacity:0;transition:opacity .15s;transform:translate(-50%,-50%);pointer-events:none}
 #stick-knob{position:absolute;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.26);
@@ -232,6 +243,7 @@ body.touch #audio-note{margin-top:12px;font-size:10px;letter-spacing:2px}
   <div class="tbtn" id="t-crouch" data-act="crouch">CROUCH</div>
   <div class="tbtn" id="t-focus" data-act="focus">FOCUS</div>
   <div class="tbtn" id="t-pause" data-act="pause">&#10073;&#10073;</div>
+  <div class="tbtn" id="t-swap"><span id="t-swap-name">MK18</span></div>
   <div id="t-guns">
     <div class="tgun" data-gun="rifle">MK18</div>
     <div class="tgun" data-gun="smg">MP7</div>
@@ -296,7 +308,8 @@ body.touch #audio-note{margin-top:12px;font-size:10px;letter-spacing:2px}
   <div id="touch-help">
     <b>LEFT THUMB</b> move &nbsp;·&nbsp; push fully forward to <b>SPRINT</b><br>
     <b>RIGHT THUMB</b> look &nbsp;·&nbsp; tap the right side to snap a shot<br>
-    <b>BUTTONS</b> fire · ads · reload · crouch · jump · focus
+    <b>BUTTONS</b> fire · ads · reload · crouch · jump · focus<br>
+    <b>SWAP</b> tap to change weapon &nbsp;·&nbsp; hold it for the full rack
   </div>
   <div class="sliders">
     <label class="slider">SENSITIVITY <input type="range" id="sens" min="2" max="60" value="14"></label>
@@ -3712,6 +3725,7 @@ function pause(on){
   if(on){
     touch.fire = false; touch.moveX = touch.moveY = 0;
     foley.beamStop(); beamShow(false);
+    if(isTouch) setFan(false);
     const acc = game.shotsFired? Math.round(100*game.hits/Math.max(1,game.shotsFired)) : 0;
     $('#sens2').value = Math.round(settings.sens*100);
     $('#pause-stats').innerHTML =
@@ -3751,6 +3765,7 @@ function startGame(mode){
   if(isTouch){
     goFullscreen();
     $('#t-ads').classList.remove('on'); $('#t-crouch').classList.remove('on'); $('#t-focus').classList.remove('on');
+    setFan(false);
     syncGunButtons();
   }else{
     renderer.domElement.requestPointerLock();
@@ -3887,11 +3902,31 @@ bindButton($('#t-crouch'),()=>{
 });
 bindButton($('#t-focus'), ()=>{ setSlow(!game.slow); $('#t-focus').classList.toggle('on', game.slow); });
 bindButton($('#t-pause'), ()=>pause(true));
+const WSHORT = {rifle:'MK18', smg:'MP7', pistol:'P226', sniper:'M700', laser:'DEW'};
+const gunFan = $('#t-guns'), swapBtn = $('#t-swap');
+let fanTimer = null, fanHold = null, fanOpen = false;
+
+function setFan(open){
+  fanOpen = open;
+  gunFan.classList.toggle('open', open);
+  swapBtn.classList.toggle('on', open);
+  clearTimeout(fanTimer);
+  if(open) fanTimer = setTimeout(()=>setFan(false), 3200);   // gets out of the way on its own
+}
 document.querySelectorAll('.tgun').forEach(el=>{
-  bindButton(el, ()=>switchWeapon(el.dataset.gun));
+  bindButton(el, ()=>{ switchWeapon(el.dataset.gun); setFan(false); });
 });
+bindButton(swapBtn,
+  ()=>{ clearTimeout(fanHold); fanHold = setTimeout(()=>setFan(true), 300); },   // hold: full list
+  ()=>{
+    clearTimeout(fanHold);
+    if(fanOpen) setFan(false);                                                   // tap again: put it away
+    else cycleWeapon();                                                          // tap: next weapon
+  });
 function syncGunButtons(){
   document.querySelectorAll('.tgun').forEach(el=>el.classList.toggle('on', el.dataset.gun===weapon.key));
+  const label = $('#t-swap-name');
+  if(label) label.textContent = WSHORT[weapon.key] || '';
 }
 
 /* ---- aim assist: without it a thumb cannot hold a silhouette ------------- */
