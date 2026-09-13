@@ -1421,6 +1421,32 @@ function box(w,h,d,x,y,z,mat,opt){
   world.add(grav); shootables.push(grav);
 }
 
+// Height of the land. Dead flat across the compound so nothing that rests on
+// the ground has to care, then rising into dunes once you are past the wire.
+function terrainH(x, z){
+  const d = Math.hypot(x, z + 20);
+  const k = clamp((d - 54) / 46, 0, 1);
+  const h = Math.sin(x*0.0115 + 1.7) * Math.sin(z*0.0132 + 0.4) * 9.5
+          + Math.sin(x*0.034) * Math.cos(z*0.027) * 3.4
+          + Math.sin(x*0.071 + 3.1) * Math.cos(z*0.061) * 1.1;
+  return h * k * k;
+}
+{
+  // dune ring: an annulus displaced by the height field, purely scenery
+  const geo = new THREE.RingGeometry(52, 260, 110, 26);
+  geo.rotateX(-Math.PI/2);
+  const pos = geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    pos.setY(i, terrainH(x, z) - 0.15);
+  }
+  geo.computeVertexNormals();
+  const dunes = new THREE.Mesh(geo, MAT.sand);
+  dunes.receiveShadow = true;
+  dunes.userData.mat = 'sand';
+  world.add(dunes);
+}
+
 // surface lookup for footstep sounds
 function surfaceAt(x,z){
   if(Math.abs(x)<17 && z>-9 && z<17) return 'concrete';
@@ -1443,15 +1469,28 @@ function buildShed(){
 buildShed();
 
 // sandbag wall builder
+// a filled bag: squashed sphere, slumped a little on top
+const BAG_GEO = (()=>{
+  const g = new THREE.SphereGeometry(0.33, 10, 7);
+  const p = g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const y = p.getY(i);
+    p.setX(i, p.getX(i)*1.02);
+    p.setY(i, y*0.62 - (y>0 ? y*y*0.35 : 0));
+    p.setZ(i, p.getZ(i)*1.12);
+  }
+  g.computeVertexNormals();
+  return g;
+})();
 function sandbags(x,z,len,ry,rows){
   const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y=ry||0; world.add(g);
   const n = Math.ceil(len/0.62);
   for(let r=0;r<(rows||3);r++){
     for(let i=0;i<n;i++){
-      const bagGeo = new THREE.BoxGeometry(0.6,0.26,0.42);
-      const m = new THREE.Mesh(bagGeo, MAT.burlap);
-      m.position.set((i-n/2)*0.62 + (r%2?0.3:0) + rand(-.02,.02), 0.14+r*0.25, rand(-.03,.03));
-      m.rotation.set(rand(-.05,.05), rand(-.07,.07), rand(-.06,.06));
+      const m = new THREE.Mesh(BAG_GEO, MAT.burlap);
+      m.position.set((i-n/2)*0.62 + (r%2?0.3:0) + rand(-.03,.03), 0.15+r*0.235, rand(-.04,.04));
+      m.rotation.set(rand(-.10,.10), rand(-.16,.16), rand(-.12,.12));
+      m.scale.set(rand(0.92,1.08), rand(0.9,1.1), rand(0.92,1.08));
       m.castShadow = m.receiveShadow = true; m.userData.mat='sand';
       g.add(m); shootables.push(m);
     }
@@ -1696,11 +1735,28 @@ function wreck(x,z,ry){
   return g;
 }
 // jersey barrier
+const BARRIER_GEO = (()=>{
+  const sh = new THREE.Shape();                 // the classic double-sloped profile
+  sh.moveTo(-0.36, 0);
+  sh.lineTo( 0.36, 0);
+  sh.lineTo( 0.22, 0.26);
+  sh.lineTo( 0.115, 0.42);
+  sh.lineTo( 0.10, 1.02);
+  sh.lineTo(-0.10, 1.02);
+  sh.lineTo(-0.115, 0.42);
+  sh.lineTo(-0.22, 0.26);
+  sh.closePath();
+  const g = new THREE.ExtrudeGeometry(sh, {depth:2.2, bevelEnabled:true, bevelSize:0.03,
+    bevelThickness:0.03, bevelSegments:1, steps:1});
+  g.rotateY(Math.PI/2);
+  g.translate(-1.1, 0, 0);
+  return g;
+})();
 function barrier(x,z,ry){
   const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y=ry||0; world.add(g);
-  const a = new THREE.Mesh(new THREE.BoxGeometry(2.2,0.45,0.7), MAT.concrete); a.position.y=0.22;
-  const b2 = new THREE.Mesh(new THREE.BoxGeometry(2.2,0.6,0.34), MAT.concrete); b2.position.y=0.72;
-  [a,b2].forEach(m=>{ m.castShadow=m.receiveShadow=true; m.userData.mat='concrete'; g.add(m); shootables.push(m); });
+  const a = new THREE.Mesh(BARRIER_GEO, MAT.concrete);
+  a.castShadow = a.receiveShadow = true; a.userData.mat='concrete';
+  g.add(a); shootables.push(a);
   const c=Math.abs(Math.cos(ry||0)), sn=Math.abs(Math.sin(ry||0));
   colliders.push({min:new THREE.Vector3(x-(c*1.1+sn*0.35),0,z-(sn*1.1+c*0.35)),
                   max:new THREE.Vector3(x+(c*1.1+sn*0.35),1.0,z+(sn*1.1+c*0.35))});
@@ -1721,6 +1777,179 @@ function floodlight(x,z,ry){
     L.position.set(x + Math.sin(ry)*1.2, 6.0, z + Math.cos(ry)*1.2);
     world.add(L);
   }
+}
+
+/* ---- rounded set dressing: nothing in here is a box ---------------------- */
+const RUST = new THREE.MeshStandardMaterial({map:TEX.metal, normalMap:NRM.metal,
+  normalScale:new THREE.Vector2(0.6,0.6), color:C(0x7b6a58), roughness:0.78, metalness:0.55});
+const RUBBER = new THREE.MeshStandardMaterial({color:C(0x171717), roughness:0.96, metalness:0});
+const BARK = new THREE.MeshStandardMaterial({color:C(0x4a3c2c), roughness:1, metalness:0, flatShading:true});
+const CANVAS_M = new THREE.MeshStandardMaterial({color:C(0x8d7e5c), roughness:1, metalness:0, side:THREE.DoubleSide});
+
+function addProp(m, x, y, z, solid, mat){
+  m.position.set(x,y,z);
+  m.castShadow = m.receiveShadow = true;
+  m.userData.mat = mat || 'metal';
+  world.add(m); shootables.push(m);
+  if(solid) colliders.push(solid);
+  return m;
+}
+// concrete culvert sections you can duck behind, or crawl through
+function culvert(x,z,ry){
+  const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y=ry||0; world.add(g);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.05,3.2,20,1,true), MAT.concrete);
+  tube.rotation.z = Math.PI/2;
+  const lipA = new THREE.Mesh(new THREE.TorusGeometry(1.05,0.08,8,20), MAT.concrete);
+  lipA.rotation.y = Math.PI/2; lipA.position.x = 1.6;
+  const lipB = lipA.clone(); lipB.position.x = -1.6;
+  [tube,lipA,lipB].forEach(m=>{ m.position.y += 1.05; m.castShadow=m.receiveShadow=true;
+    m.userData.mat='concrete'; g.add(m); shootables.push(m); });
+  const c=Math.abs(Math.cos(ry||0)), sn=Math.abs(Math.sin(ry||0));
+  // only the walls block you — the bore stays open
+  for(const side of [-1,1]){
+    const ox = side*0.85*c, oz = -side*0.85*sn;
+    colliders.push({min:new THREE.Vector3(x+ox-(c*1.7+sn*0.35), 0, z+oz-(sn*1.7+c*0.35)),
+                    max:new THREE.Vector3(x+ox+(c*1.7+sn*0.35), 2.1, z+oz+(sn*1.7+c*0.35))});
+  }
+  return g;
+}
+// cable drum
+function spool(x,z,ry){
+  const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y=ry||rand(0,3); world.add(g);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.95,0.95,0.1,18), MAT.wood);
+  disc.rotation.z = Math.PI/2; disc.position.set(-0.5,0.95,0);
+  const disc2 = disc.clone(); disc2.position.x = 0.5;
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,0.95,16), MAT.wood);
+  core.rotation.z = Math.PI/2; core.position.y = 0.95;
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.66,0.66,0.9,20), RUBBER);
+  cable.rotation.z = Math.PI/2; cable.position.y = 0.95;
+  [disc,disc2,core,cable].forEach(m=>{ m.castShadow=m.receiveShadow=true; m.userData.mat='wood';
+    g.add(m); shootables.push(m); });
+  colliders.push({min:new THREE.Vector3(x-1.0,0,z-1.0), max:new THREE.Vector3(x+1.0,1.9,z+1.0)});
+  return g;
+}
+// stacked tyres
+function tyres(x,z,n){
+  const g = new THREE.Group(); g.position.set(x,0,z); world.add(g);
+  const count = n||randi(2,4);
+  for(let i=0;i<count;i++){
+    const t = new THREE.Mesh(new THREE.TorusGeometry(0.45,0.17,8,16), RUBBER);
+    t.rotation.x = Math.PI/2; t.rotation.z = rand(0,3);
+    t.position.set(rand(-.06,.06), 0.17 + i*0.3, rand(-.06,.06));
+    t.castShadow = t.receiveShadow = true; t.userData.mat='metal';
+    g.add(t); shootables.push(t);
+  }
+  colliders.push({min:new THREE.Vector3(x-0.6,0,z-0.6), max:new THREE.Vector3(x+0.6,count*0.3,z+0.6)});
+  return g;
+}
+// dead tree
+function deadTree(x,z){
+  const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y=rand(0,6); world.add(g);
+  const h = rand(2.6,4.6);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.20,h,7), BARK);
+  trunk.position.y = h/2;
+  trunk.castShadow = true; trunk.userData.mat='wood';
+  g.add(trunk); shootables.push(trunk);
+  const n = randi(3,6);
+  for(let i=0;i<n;i++){
+    const bl = rand(0.7,1.7);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.07,bl,5), BARK);
+    const a = (i/n)*TAU + rand(-0.4,0.4);
+    const tilt = rand(0.5,1.1);
+    b.position.set(Math.cos(a)*0.1, h*rand(0.55,0.95), Math.sin(a)*0.1);
+    b.rotation.set(Math.sin(a)*tilt, 0, -Math.cos(a)*tilt);
+    b.translateY(bl*0.45);
+    b.castShadow = true; b.userData.mat='wood';
+    g.add(b); shootables.push(b);
+  }
+  colliders.push({min:new THREE.Vector3(x-0.22,0,z-0.22), max:new THREE.Vector3(x+0.22,h,z+0.22)});
+  return g;
+}
+// weathered boulders, a few together
+function rockCluster(x,z,scale){
+  const g = new THREE.Group(); g.position.set(x,0,z); world.add(g);
+  const s = scale||1;
+  const n = randi(3,6);
+  for(let i=0;i<n;i++){
+    const geo = new THREE.IcosahedronGeometry(1, 1);
+    const pos = geo.attributes.position;
+    for(let v=0;v<pos.count;v++){                       // rough them up
+      const f = 1 + Math.sin(pos.getX(v)*5.1)*0.13 + Math.cos(pos.getZ(v)*4.3)*0.11;
+      pos.setXYZ(v, pos.getX(v)*f, pos.getY(v)*f, pos.getZ(v)*f);
+    }
+    geo.computeVertexNormals();
+    const r = rand(0.5,1.5)*s;
+    const m = new THREE.Mesh(geo, Math.random()<0.5? ROCK_A : ROCK_B);
+    m.position.set(rand(-1.4,1.4)*s, r*rand(0.35,0.6), rand(-1.4,1.4)*s);
+    m.scale.set(r*rand(0.8,1.3), r*rand(0.55,0.9), r*rand(0.8,1.3));
+    m.rotation.set(rand(0,3),rand(0,3),rand(0,3));
+    m.castShadow = m.receiveShadow = true; m.userData.mat='concrete';
+    g.add(m); shootables.push(m);
+    if(r > 0.85*s) colliders.push({min:new THREE.Vector3(x+m.position.x-r*0.7,0,z+m.position.z-r*0.7),
+                                   max:new THREE.Vector3(x+m.position.x+r*0.7, r*1.1, z+m.position.z+r*0.7)});
+  }
+  return g;
+}
+const ROCK_A = new THREE.MeshStandardMaterial({color:C(0x6b6459), roughness:1, metalness:0, flatShading:true});
+const ROCK_B = new THREE.MeshStandardMaterial({color:C(0x7d7365), roughness:1, metalness:0, flatShading:true});
+// water tower on splayed legs
+function waterTower(x,z){
+  const g = new THREE.Group(); g.position.set(x,0,z); world.add(g);
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.5,3.4,22), RUST);
+  tank.position.y = 9.4;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.75,1.2,22), RUST);
+  roof.position.y = 11.7;
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(2.5,22,10,0,TAU,Math.PI/2,Math.PI/2), RUST);
+  belly.position.y = 7.7;
+  [tank,roof,belly].forEach(m=>{ m.castShadow=m.receiveShadow=true; m.userData.mat='metal';
+    g.add(m); shootables.push(m); });
+  for(let i=0;i<4;i++){
+    const a = i*Math.PI/2 + Math.PI/4;
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,8.2,8), RUST);
+    leg.position.set(Math.cos(a)*2.1, 4.0, Math.sin(a)*2.1);
+    leg.rotation.set(Math.sin(a)*0.14, 0, -Math.cos(a)*0.14);
+    leg.castShadow = true; leg.userData.mat='metal';
+    g.add(leg); shootables.push(leg);
+    colliders.push({min:new THREE.Vector3(x+Math.cos(a)*2.1-0.22,0,z+Math.sin(a)*2.1-0.22),
+                    max:new THREE.Vector3(x+Math.cos(a)*2.1+0.22,7.5,z+Math.sin(a)*2.1+0.22)});
+  }
+  for(let i=0;i<3;i++){                                   // cross bracing
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.3 - i*0.12, 0.05, 6, 18), RUST);
+    ring.rotation.x = Math.PI/2; ring.position.y = 2.2 + i*2.3;
+    ring.castShadow = true; g.add(ring);
+  }
+  return g;
+}
+// field tent
+function tent(x,z,ry){
+  const g = new THREE.Group(); g.position.set(x,0,z); g.rotation.y=ry||rand(0,3); world.add(g);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 2.6, 2.4, 4, 1, true), CANVAS_M);
+  body.position.y = 1.2; body.rotation.y = Math.PI/4;
+  body.castShadow = body.receiveShadow = true; body.userData.mat='sand';
+  g.add(body); shootables.push(body);
+  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,3.6,6), MAT.metal);
+  ridge.rotation.z = Math.PI/2; ridge.position.y = 2.4;
+  ridge.castShadow = true; g.add(ridge);
+  colliders.push({min:new THREE.Vector3(x-1.8,0,z-1.8), max:new THREE.Vector3(x+1.8,2.2,z+1.8)});
+  return g;
+}
+const CRATER_M = new THREE.MeshStandardMaterial({map:TEX.gravel, normalMap:NRM.gravel,
+  normalScale:new THREE.Vector2(1,1), color:C(0x6e6357), roughness:1, metalness:0});
+// shallow crater
+function crater(x,z,r){
+  const geo = new THREE.CircleGeometry(r, 26);
+  geo.rotateX(-Math.PI/2);
+  const pos = geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const d = Math.hypot(pos.getX(i), pos.getZ(i))/r;
+    pos.setY(i, -0.55*(1-d*d) + (d>0.82 ? 0.28*(d-0.82)/0.18 : 0));
+  }
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, CRATER_M);
+  m.position.set(x, 0.03, z);
+  m.receiveShadow = true; m.userData.mat='sand';
+  world.add(m); shootables.push(m);
+  return m;
 }
 
 /* ---- compound layout ------------------------------------------------------ */
@@ -1772,6 +2001,27 @@ crateStacks.forEach(([cx,cz])=>{
 });
 for(let i=0;i<(isTouch?8:14);i++) barrel(rand(-33,33), rand(-46,-10));
 for(let i=0;i<(isTouch?4:8);i++) pallet(rand(-34,34), rand(-48,-8));
+
+// rounded dressing, placed off the grid
+waterTower(-39, -39);
+culvert(-9.5, -29, 0.42); culvert(13, -23.5, 1.85); culvert(-21.5, -9, 0.95);
+spool(16.5, -31, 0.7); spool(-30, -12.5, 2.2); spool(25.5, -8, 1.4);
+tyres(21, -34); tyres(22.4, -33.2, 2); tyres(-16.5, -23); tyres(-26, -16, 5);
+tent(34, -13, 0.5); tent(-35.5, -27, 2.4);
+crater(-12.5, -41, 3.2); crater(7, -35, 2.4); crater(29, -44, 4.0); crater(-31, -34, 2.0);
+// trees and rock, inside the wire and scattered out across the dunes
+[[-24,-4],[23,-2],[-37,-17],[37,-31],[-8,-49],[18,-49],[41,-9],[-43,-24]]
+  .forEach(([tx,tz])=>deadTree(tx,tz));
+for(let i=0;i<9;i++){
+  const a = rand(0,TAU), r = rand(62, 150);
+  deadTree(Math.cos(a)*r, Math.sin(a)*r - 20);
+}
+[[-34,-6,1.1],[33,-18,0.9],[-18,-44,1.3],[26,-40,1.0],[-41,-45,1.6],[42,-41,1.4]]
+  .forEach(([rx,rz,rs])=>rockCluster(rx,rz,rs));
+for(let i=0;i<14;i++){
+  const a = rand(0,TAU), r = rand(60, 190);
+  rockCluster(Math.cos(a)*r, Math.sin(a)*r - 20, rand(1.2, 3.4));
+}
 
 // floodlights along the firing line and the far berm
 floodlight(-21, -4, 0.2); floodlight(21, -4, -0.2);
@@ -1873,14 +2123,20 @@ function updateMotes(dt){
 
 // earth backstop behind the impact area
 {
-  const g = new THREE.BoxGeometry(92, 3.6, 11);
+  // a heaped ridge of earth: smooth across, wandering along its length
+  const g = new THREE.PlaneGeometry(96, 14, 96, 14);
+  g.rotateX(-Math.PI/2);
   const pos = g.attributes.position;
   for(let i=0;i<pos.count;i++){
-    if(pos.getY(i) > 0) pos.setZ(i, pos.getZ(i)*0.32);     // taper to a crest
+    const x = pos.getX(i), z = pos.getZ(i);
+    const across = clamp(1 - Math.abs(z)/7, 0, 1);
+    const profile = Math.sin(across*Math.PI*0.5);            // rounded crest
+    const wander = 1 + Math.sin(x*0.13)*0.12 + Math.sin(x*0.31+2.1)*0.07;
+    pos.setY(i, profile*profile*4.0*wander + Math.sin(x*0.9)*0.05*across);
   }
   g.computeVertexNormals();
   const berm = new THREE.Mesh(g, MAT.sand);
-  berm.position.set(0, 1.8, -51);
+  berm.position.set(0, 0, -51);
   berm.castShadow = berm.receiveShadow = true;
   berm.userData.mat = 'sand';
   world.add(berm); shootables.push(berm);
