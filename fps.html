@@ -375,6 +375,13 @@ class Foley {
     this.roomSend = ctx.createGain(); this.roomSend.gain.value = 0.30;
     this.roomSend.connect(this.room); this.room.connect(this.master);
 
+    // interior: tighter, brighter, and it slaps
+    this.hall = ctx.createConvolver();
+    this.hall.buffer = this.makeIR(1.9, 2.2, 5200);
+    this.hallSend = ctx.createGain(); this.hallSend.gain.value = 0.0;
+    this.hallSend.connect(this.hall); this.hall.connect(this.master);
+    this.insideK = 0;
+
     this.air = ctx.createConvolver();
     this.air.buffer = this.makeIR(2.9, 1.5, 900);
     this.airSend = ctx.createGain(); this.airSend.gain.value = 0.34;
@@ -391,6 +398,71 @@ class Foley {
     this.startAmbience();
   }
   resume(){ if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); }
+  // 0 = out in the open, 1 = under a roof
+  setInside(k){
+    if(!this.ready || Math.abs(k - this.insideK) < 0.01) return;
+    this.insideK = k;
+    const t = this.now();
+    this.hallSend.gain.setTargetAtTime(0.55*k, t, 0.25);
+    this.roomSend.gain.setTargetAtTime(0.30*(1-k*0.5), t, 0.25);
+    this.airSend.gain.setTargetAtTime(0.34*(1-k*0.85), t, 0.25);
+  }
+  // someone else's rifle heard across the compound: the report takes time to
+  // arrive, loses its top end on the way, and is muffled again through a wall
+  shotAt(pos, cfg){
+    if(!this.ready) return;
+    const c = cfg||{}, cal = c.cal||1;
+    const dist = camera.position.distanceTo(pos);
+    const occl = c.occluded ? 0.5 : 1;
+    const cut  = clamp(17000 - dist*300, 900, 17000) * (c.occluded? 0.22 : 1);
+    setTimeout(()=>{
+      if(!this.ready) return;
+      const t = this.now();
+      const d = this.bus(pos, {room:0.7, air:1.2, ref:4, rolloff:0.5, lp:cut});
+      d.gain.value = 0.95*occl;
+      this.noiseBurst(d,t,0.012,1.0,'highpass',4200/cal,0.7);
+      this.noiseBurst(d,t,0.032,0.95,'bandpass',1700/cal,0.8,600);
+      this.tone(d,t,185*cal,0.12*cal,0.7,'triangle',44);
+      this.tone(d,t,92*cal,0.18*cal,0.45,'sine',34);
+      this.noiseBurst(d,t+0.02,0.5*cal,0.28,'lowpass',700,0.6,190);
+      if(dist > 25) this.noiseBurst(d, t+0.09, 0.7, 0.16, 'lowpass', 480, 0.5, 150);
+    }, Math.min(1200, (dist/343)*1000));
+  }
+  // fighting somewhere out past the wire
+  distantBattle(){
+    if(!this.ready) return;
+    const a = Math.random()*TAU, r = rand(90, 190);
+    const pos = new THREE.Vector3(camera.position.x + Math.cos(a)*r, rand(1,12), camera.position.z + Math.sin(a)*r);
+    const n = randi(1,4);
+    for(let i=0;i<n;i++) setTimeout(()=>this.distantShot(pos), i*rand(90,260));
+    if(Math.random()<0.25) setTimeout(()=>{
+      const t=this.now();
+      const d=this.bus(pos,{room:0.2, air:1.4, ref:20, rolloff:0.35}); d.gain.value=0.75;
+      this.tone(d,t,52,1.3,0.6,'sine',20);
+      this.noiseBurst(d,t,1.6,0.30,'lowpass',260,0.5,90);
+    }, rand(400,900));
+  }
+  // a bird out past the berm
+  bird(){
+    if(!this.ready) return;
+    const t=this.now(), ctx=this.ctx;
+    const a=Math.random()*TAU, r=rand(25,70);
+    const pos=new THREE.Vector3(camera.position.x+Math.cos(a)*r, rand(4,14), camera.position.z+Math.sin(a)*r);
+    const d=this.bus(pos,{room:0.3, air:0.6, ref:8, rolloff:0.6}); d.gain.value=0.30;
+    const n=randi(2,4);
+    for(let i=0;i<n;i++){
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      const t0=t+i*rand(0.08,0.2), f0=rand(1800,3400);
+      o.type='sine';
+      o.frequency.setValueAtTime(f0, t0);
+      o.frequency.exponentialRampToValueAtTime(f0*rand(1.2,1.9), t0+0.05);
+      o.frequency.exponentialRampToValueAtTime(f0*rand(0.7,0.95), t0+0.12);
+      g.gain.setValueAtTime(0.0001,t0);
+      g.gain.exponentialRampToValueAtTime(0.25,t0+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t0+rand(0.10,0.22));
+      o.connect(g); g.connect(d); o.start(t0); o.stop(t0+0.35);
+    }
+  }
   setVolume(v){ this.volume=v; if(this.master) this.master.gain.value=v; }
 
   makeNoise(dur){
@@ -432,6 +504,13 @@ class Foley {
   bus(pos, opts){
     const ctx=this.ctx, o = opts||{};
     const g = ctx.createGain(); g.gain.value = 1;
+    let head = g;
+    if(o.lp && o.lp < 19000){            // air absorption, or a wall in the way
+      const f = ctx.createBiquadFilter();
+      f.type='lowpass'; f.frequency.value = o.lp; f.Q.value = 0.7;
+      g.connect(f); head = f;
+    }
+    const send = (node, bus, amt)=>{ const s=ctx.createGain(); s.gain.value=amt; node.connect(s); s.connect(bus); };
     if(pos){
       const p = ctx.createPanner();
       p.panningModel='HRTF'; p.distanceModel='inverse';
@@ -439,16 +518,18 @@ class Foley {
       p.maxDistance = 500;
       if(p.positionX){ p.positionX.value=pos.x; p.positionY.value=pos.y; p.positionZ.value=pos.z; }
       else p.setPosition(pos.x,pos.y,pos.z);
-      g.connect(p);
+      head.connect(p);
       p.connect(this.dry);
-      if(o.room!==0) { const s=ctx.createGain(); s.gain.value=(o.room==null?1:o.room); p.connect(s); s.connect(this.roomSend); }
-      if(o.air) { const s=ctx.createGain(); s.gain.value=o.air; p.connect(s); s.connect(this.airSend); }
+      const r = (o.room==null?1:o.room);
+      if(o.room!==0){ send(p, this.roomSend, r); send(p, this.hallSend, r*0.8); }
+      if(o.air) send(p, this.airSend, o.air);
     }else{
       const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-      if(pan){ pan.pan.value = o.pan||0; g.connect(pan); pan.connect(this.dry); }
-      else g.connect(this.dry);
-      if(o.room!==0){ const s=ctx.createGain(); s.gain.value=(o.room==null?0.8:o.room); g.connect(s); s.connect(this.roomSend); }
-      if(o.air){ const s=ctx.createGain(); s.gain.value=o.air; g.connect(s); s.connect(this.airSend); }
+      if(pan){ pan.pan.value = o.pan||0; head.connect(pan); pan.connect(this.dry); }
+      else head.connect(this.dry);
+      const r = (o.room==null?0.8:o.room);
+      if(o.room!==0){ send(head, this.roomSend, r); send(head, this.hallSend, r*0.8); }
+      if(o.air) send(head, this.airSend, o.air);
     }
     return g;
   }
@@ -871,6 +952,12 @@ class Foley {
     const lfo=ctx.createOscillator(); lfo.frequency.value=0.07;
     const lg=ctx.createGain(); lg.gain.value=0.055;
     lfo.connect(lg); lg.connect(g.gain); lfo.start(t);
+    const gust=ctx.createOscillator(); gust.frequency.value=0.023;    // slow gusts
+    const gg=ctx.createGain(); gg.gain.value=0.085;
+    gust.connect(gg); gg.connect(g.gain); gust.start(t);
+    const gustF=ctx.createOscillator(); gustF.frequency.value=0.019;  // which also open the filter
+    const gfg=ctx.createGain(); gfg.gain.value=260;
+    gustF.connect(gfg); gfg.connect(f.frequency); gustF.start(t);
     s.connect(f); f.connect(g); g.connect(this.master); s.start(t);
     this.windGain = g;
 
@@ -911,8 +998,9 @@ renderer.setSize(innerWidth, innerHeight, false);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.95;
+renderer.toneMapping = THREE.NoToneMapping;      // done in the composite pass, on HDR values
+renderer.toneMappingExposure = 1.0;
+let exposure = 1.9;
 renderer.autoClear = false;
 document.body.appendChild(renderer.domElement);
 
@@ -1011,20 +1099,61 @@ TEX.paper = canvasTex(256,(g,s)=>{
   g.fillText('LANE', s*0.06, s*0.95);
 });
 
+// derive a tangent-space normal map from a canvas texture's luminance
+function normalFromCanvas(tex, strength){
+  const src = tex.image, w = src.width, h = src.height;
+  const sctx = src.getContext('2d');
+  const data = sctx.getImageData(0,0,w,h).data;
+  const lum = new Float32Array(w*h);
+  for(let i=0;i<w*h;i++) lum[i] = (data[i*4]*0.299 + data[i*4+1]*0.587 + data[i*4+2]*0.114)/255;
+  const out = document.createElement('canvas'); out.width=w; out.height=h;
+  const octx = out.getContext('2d');
+  const img = octx.createImageData(w,h);
+  const at = (x,y)=>lum[((y+h)%h)*w + ((x+w)%w)];
+  const k = strength||1;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    // sobel
+    const dx = (at(x-1,y-1)+2*at(x-1,y)+at(x-1,y+1)) - (at(x+1,y-1)+2*at(x+1,y)+at(x+1,y+1));
+    const dy = (at(x-1,y-1)+2*at(x,y-1)+at(x+1,y-1)) - (at(x-1,y+1)+2*at(x,y+1)+at(x+1,y+1));
+    let nx = dx*k, ny = dy*k, nz = 1;
+    const l = Math.sqrt(nx*nx+ny*ny+nz*nz);
+    nx/=l; ny/=l; nz/=l;
+    const i = (y*w+x)*4;
+    img.data[i]   = (nx*0.5+0.5)*255;
+    img.data[i+1] = (ny*0.5+0.5)*255;
+    img.data[i+2] = (nz*0.5+0.5)*255;
+    img.data[i+3] = 255;
+  }
+  octx.putImageData(img,0,0);
+  const t = new THREE.CanvasTexture(out);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.copy(tex.repeat);
+  t.anisotropy = tex.anisotropy;
+  return t;
+}
+const NRM = {
+  sand:     normalFromCanvas(TEX.sand, 2.2),
+  gravel:   normalFromCanvas(TEX.gravel, 2.6),
+  concrete: normalFromCanvas(TEX.concrete, 1.6),
+  metal:    normalFromCanvas(TEX.metal, 1.1),
+  wood:     normalFromCanvas(TEX.wood, 1.4),
+  burlap:   normalFromCanvas(TEX.burlap, 2.0)
+};
+
 /* ---- shared materials --------------------------------------------------- */
 const MAT = {
-  sand:     new THREE.MeshStandardMaterial({map:TEX.sand, bumpMap:TEX.sand, bumpScale:0.05, roughness:1, metalness:0}),
-  gravel:   new THREE.MeshStandardMaterial({map:TEX.gravel, bumpMap:TEX.gravel, bumpScale:0.08, roughness:1, metalness:0}),
-  concrete: new THREE.MeshStandardMaterial({map:TEX.concrete, bumpMap:TEX.concrete, bumpScale:0.03, roughness:0.95, metalness:0}),
-  metal:    new THREE.MeshStandardMaterial({map:TEX.metal, bumpMap:TEX.metal, bumpScale:0.012, roughness:0.45, metalness:0.85}),
-  steel:    new THREE.MeshStandardMaterial({color:C(0xd9dde2), roughness:0.34, metalness:0.95}),
-  wood:     new THREE.MeshStandardMaterial({map:TEX.wood, bumpMap:TEX.wood, bumpScale:0.02, roughness:0.88, metalness:0}),
-  burlap:   new THREE.MeshStandardMaterial({map:TEX.burlap, bumpMap:TEX.burlap, bumpScale:0.05, roughness:1, metalness:0}),
+  sand:     new THREE.MeshStandardMaterial({map:TEX.sand, normalMap:NRM.sand, normalScale:new THREE.Vector2(0.85,0.85), roughness:1, metalness:0}),
+  gravel:   new THREE.MeshStandardMaterial({map:TEX.gravel, normalMap:NRM.gravel, normalScale:new THREE.Vector2(1.0,1.0), roughness:1, metalness:0}),
+  concrete: new THREE.MeshStandardMaterial({map:TEX.concrete, normalMap:NRM.concrete, normalScale:new THREE.Vector2(0.6,0.6), roughness:0.95, metalness:0}),
+  metal:    new THREE.MeshStandardMaterial({map:TEX.metal, normalMap:NRM.metal, normalScale:new THREE.Vector2(0.5,0.5), roughness:0.45, metalness:0.85, envMapIntensity:1.1}),
+  steel:    new THREE.MeshStandardMaterial({color:C(0xd9dde2), roughness:0.3, metalness:0.95, envMapIntensity:1.3}),
+  wood:     new THREE.MeshStandardMaterial({map:TEX.wood, normalMap:NRM.wood, normalScale:new THREE.Vector2(0.5,0.5), roughness:0.88, metalness:0}),
+  burlap:   new THREE.MeshStandardMaterial({map:TEX.burlap, normalMap:NRM.burlap, normalScale:new THREE.Vector2(0.9,0.9), roughness:1, metalness:0}),
   paper:    new THREE.MeshStandardMaterial({map:TEX.paper, roughness:0.95, metalness:0, side:THREE.DoubleSide}),
-  gun:      new THREE.MeshStandardMaterial({color:C(0x2b2e31), roughness:0.42, metalness:0.78}),
+  gun:      new THREE.MeshStandardMaterial({color:C(0x2b2e31), roughness:0.38, metalness:0.82, envMapIntensity:1.25}),
   gunDark:  new THREE.MeshStandardMaterial({color:C(0x17191b), roughness:0.6,  metalness:0.5}),
   polymer:  new THREE.MeshStandardMaterial({color:C(0x3a4038), roughness:0.75, metalness:0.05}),
-  brass:    new THREE.MeshStandardMaterial({color:C(0xc9a227), roughness:0.28, metalness:1}),
+  brass:    new THREE.MeshStandardMaterial({color:C(0xc9a227), roughness:0.24, metalness:1, envMapIntensity:1.4}),
   glass:    new THREE.MeshStandardMaterial({color:C(0x9fd8ff), roughness:0.05, metalness:0.2, transparent:true, opacity:0.24}),
   cloth:    new THREE.MeshStandardMaterial({color:C(0x4b4a3f), roughness:1, metalness:0}),
   skin:     new THREE.MeshStandardMaterial({color:C(0x8a6a52), roughness:0.85, metalness:0})
@@ -1041,6 +1170,9 @@ sun.shadow.bias = -0.0012; sun.shadow.normalBias = 0.02;
 scene.add(sun); scene.add(sun.target);
 scene.add(new THREE.HemisphereLight(0x6d8fb8, 0x4a3a26, 0.62));
 scene.add(new THREE.AmbientLight(0xffffff, 0.11));
+const rimLight = new THREE.DirectionalLight(0x9fc4ff, 0.55);   // cool sky bounce, no shadows
+rimLight.position.set(38, 22, -46);
+scene.add(rimLight);
 
 // weapon-scene lighting (mirrors the world so the gun sits in the same light)
 const vmKey  = new THREE.DirectionalLight(0xffd9b0, 1.7); vmKey.position.set(-1,1.6,0.9);
@@ -1049,21 +1181,25 @@ const vmRim  = new THREE.DirectionalLight(0xffffff, 0.45); vmRim.position.set(0.
 vmScene.add(vmKey, vmFill, vmRim, new THREE.AmbientLight(0xffffff,0.18));
 
 /* ---- sky + horizon ------------------------------------------------------ */
+let skyMat = null;
 {
   const skyGeo = new THREE.SphereGeometry(460, 32, 18);
-  const skyMat = new THREE.ShaderMaterial({
+  skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite:false, fog:false,
-    uniforms:{ top:{value:SKY_TOP}, bot:{value:SKY_BOT}, sunDir:{value:sun.position.clone().normalize()} },
+    uniforms:{ top:{value:SKY_TOP}, bot:{value:SKY_BOT}, sunDir:{value:sun.position.clone().normalize()},
+               sunGain:{value:1.0}, skyGain:{value:1.0} },
     vertexShader:'varying vec3 vP; void main(){ vP=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);} ',
     fragmentShader:[
       'varying vec3 vP; uniform vec3 top; uniform vec3 bot; uniform vec3 sunDir;',
+      'uniform float sunGain; uniform float skyGain;',
       'void main(){',
       '  float h = clamp(vP.y*1.25+0.06, 0.0, 1.0);',
       '  vec3 c = mix(bot, top, pow(h,0.72));',
       '  float d = max(dot(normalize(vP), normalize(sunDir)), 0.0);',
-      '  c += vec3(1.0,0.72,0.42) * pow(d, 7.0) * 0.55;',
-      '  c += vec3(1.0,0.85,0.6) * pow(d, 220.0) * 2.2;',
-      '  gl_FragColor = vec4(c,1.0);',
+      '  c += vec3(1.0,0.72,0.42) * pow(d, 7.0) * 0.8 * sunGain;',       // haze around the sun',
+      '  c += vec3(1.0,0.86,0.62) * pow(d, 240.0) * 2.6 * sunGain;',     // glow, bright enough to bloom',
+      '  c += vec3(1.0,0.95,0.85) * pow(d, 3200.0) * 13.0 * sunGain;',   // the disc itself',
+      '  gl_FragColor = vec4(c * skyGain, 1.0);',
       '}'].join('\n')
   });
   scene.add(new THREE.Mesh(skyGeo, skyMat));
@@ -1084,6 +1220,168 @@ vmScene.add(vmKey, vmFill, vmRim, new THREE.AmbientLight(0xffffff,0.18));
   rm.position.y = 0; scene.add(rm);
 }
 
+/* ============================================================================
+   2b. POST PROCESSING — HDR buffer, bloom, tone map, grade, grain
+   ========================================================================== */
+const gl2 = renderer.capabilities.isWebGL2;
+const HDR_TYPE = (gl2 || renderer.extensions.get('OES_texture_half_float'))
+  ? THREE.HalfFloatType : THREE.UnsignedByteType;
+const BLOOM_DIV = isTouch ? 6 : 4;
+
+function makeRT(w, h, depth){
+  const rt = new THREE.WebGLRenderTarget(Math.max(2,w|0), Math.max(2,h|0), {
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat, type: HDR_TYPE,
+    encoding: THREE.LinearEncoding,
+    depthBuffer: !!depth, stencilBuffer: false
+  });
+  rt.texture.generateMipmaps = false;
+  return rt;
+}
+let sceneRT = makeRT(2,2,true), bloomA = makeRT(2,2,false), bloomB = makeRT(2,2,false);
+
+// fullscreen quad shared by every pass
+const fsScene = new THREE.Scene();
+const fsCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), null);
+fsQuad.frustumCulled = false;
+fsScene.add(fsQuad);
+const FS_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+
+// 1. bright pass: keep only what is brighter than the threshold
+const brightMat = new THREE.ShaderMaterial({
+  uniforms:{ tDiffuse:{value:null}, threshold:{value:1.05}, knee:{value:0.7}, clampMax:{value:2.2} },
+  vertexShader: FS_VERT,
+  fragmentShader: [
+    'varying vec2 vUv; uniform sampler2D tDiffuse; uniform float threshold; uniform float knee; uniform float clampMax;',
+    'void main(){',
+    '  vec3 c = min(texture2D(tDiffuse, vUv).rgb, vec3(clampMax));',   // one hot pixel must not flood the blur
+    '  float l = max(c.r, max(c.g, c.b));',
+    '  float s = max(l - threshold, 0.0);',
+    '  s = s / (s + knee);',
+    '  gl_FragColor = vec4(c * s, 1.0);',
+    '}'].join('\n')
+});
+// 2. separable blur
+const blurMat = new THREE.ShaderMaterial({
+  uniforms:{ tDiffuse:{value:null}, dir:{value:new THREE.Vector2(1,0)}, texel:{value:new THREE.Vector2()} },
+  vertexShader: FS_VERT,
+  fragmentShader: [
+    'varying vec2 vUv; uniform sampler2D tDiffuse; uniform vec2 dir; uniform vec2 texel;',
+    'void main(){',
+    '  vec2 o = dir * texel;',
+    '  vec3 c = texture2D(tDiffuse, vUv).rgb * 0.2270270270;',
+    '  c += texture2D(tDiffuse, vUv + o*1.3846153846).rgb * 0.3162162162;',
+    '  c += texture2D(tDiffuse, vUv - o*1.3846153846).rgb * 0.3162162162;',
+    '  c += texture2D(tDiffuse, vUv + o*3.2307692308).rgb * 0.0702702703;',
+    '  c += texture2D(tDiffuse, vUv - o*3.2307692308).rgb * 0.0702702703;',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '}'].join('\n')
+});
+// 3. composite: bloom, ACES, grade, vignette, chromatic aberration, grain
+const compMat = new THREE.ShaderMaterial({
+  uniforms:{
+    tDiffuse:{value:null}, tBloom:{value:null},
+    bloomStrength:{value:0.34}, exposure:{value:0.95},
+    vignette:{value:0.92}, aberration:{value:isTouch?0.0:1.0},
+    grain:{value:isTouch?0.0:0.035}, time:{value:0},
+    shadowTint:{value:new THREE.Color(0.86,0.93,1.06)},
+    highTint:{value:new THREE.Color(1.06,1.0,0.92)},
+    saturation:{value:1.06}, contrast:{value:1.05}, flash:{value:0}
+  },
+  vertexShader: FS_VERT,
+  fragmentShader: [
+    'varying vec2 vUv;',
+    'uniform sampler2D tDiffuse; uniform sampler2D tBloom;',
+    'uniform float bloomStrength, exposure, vignette, aberration, grain, time, saturation, contrast, flash;',
+    'uniform vec3 shadowTint, highTint;',
+    // Narkowicz ACES fit
+    'vec3 aces(vec3 x){',
+    '  return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0);',
+    '}',
+    'float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }',
+    'void main(){',
+    '  vec2 uv = vUv;',
+    '  vec2 d = uv - 0.5;',
+    '  float r2 = dot(d,d);',
+    // lens: colour separates toward the corners
+    '  vec3 c;',
+    '  if(aberration > 0.0){',
+    '    vec2 off = d * r2 * 0.010 * aberration;',
+    '    c.r = texture2D(tDiffuse, uv + off).r;',
+    '    c.g = texture2D(tDiffuse, uv).g;',
+    '    c.b = texture2D(tDiffuse, uv - off).b;',
+    '  } else {',
+    '    c = texture2D(tDiffuse, uv).rgb;',
+    '  }',
+    '  c += texture2D(tBloom, uv).rgb * bloomStrength;',
+    '  c += flash;',
+    '  c *= exposure;',
+    '  c = aces(c);',
+    '  c = pow(max(c, vec3(0.0)), vec3(0.4545454545));',   // linear -> sRGB, as the renderer used to do
+    // grade: cool shadows, warm highlights
+    '  float l = dot(c, vec3(0.2126,0.7152,0.0722));',
+    '  c *= mix(shadowTint, highTint, smoothstep(0.15, 0.85, l));',
+    '  c = mix(vec3(l), c, saturation);',
+    '  c = clamp((c - 0.5) * contrast + 0.5, 0.0, 1.0);',
+    '  c *= 1.0 - vignette * r2 * r2 * 1.15;',                 // vignette
+    '  if(grain > 0.0){',
+    '    float g = hash(uv * 1024.0 + fract(time) * 91.7) - 0.5;',
+    '    c += g * grain * (1.2 - l);',
+    '  }',
+    '  gl_FragColor = vec4(max(c, 0.0), 1.0);',
+    '}'].join('\n')
+});
+
+function sizePost(w, h){
+  const dpr = renderer.getPixelRatio();
+  const pw = Math.max(2, Math.floor(w*dpr)), ph = Math.max(2, Math.floor(h*dpr));
+  sceneRT.setSize(pw, ph);
+  bloomA.setSize(Math.floor(pw/BLOOM_DIV), Math.floor(ph/BLOOM_DIV));
+  bloomB.setSize(Math.floor(pw/BLOOM_DIV), Math.floor(ph/BLOOM_DIV));
+}
+function drawPass(mat, target){
+  fsQuad.material = mat;
+  renderer.setRenderTarget(target || null);
+  renderer.clear(true, false, false);
+  renderer.render(fsScene, fsCam);
+}
+function renderPosted(dt){
+  // world + weapon into one HDR buffer
+  renderer.setRenderTarget(sceneRT);
+  renderPosted(dtReal);
+
+  // bloom
+  brightMat.uniforms.tDiffuse.value = sceneRT.texture;
+  drawPass(brightMat, bloomA);
+  const bw = bloomA.width, bh = bloomA.height;
+  blurMat.uniforms.texel.value.set(1/bw, 1/bh);
+  blurMat.uniforms.tDiffuse.value = bloomA.texture;
+  blurMat.uniforms.dir.value.set(1,0);
+  drawPass(blurMat, bloomB);
+  blurMat.uniforms.tDiffuse.value = bloomB.texture;
+  blurMat.uniforms.dir.value.set(0,1);
+  drawPass(blurMat, bloomA);
+  if(!isTouch){                                   // second, wider pass for a softer halo
+    blurMat.uniforms.tDiffuse.value = bloomA.texture;
+    blurMat.uniforms.dir.value.set(2,0);
+    drawPass(blurMat, bloomB);
+    blurMat.uniforms.tDiffuse.value = bloomB.texture;
+    blurMat.uniforms.dir.value.set(0,2);
+    drawPass(blurMat, bloomA);
+  }
+
+  // composite to the canvas
+  compMat.uniforms.tDiffuse.value = sceneRT.texture;
+  compMat.uniforms.tBloom.value = bloomA.texture;
+  compMat.uniforms.exposure.value = exposure;
+  compMat.uniforms.time.value += dt;
+  drawPass(compMat, null);
+}
+
+/* Image-based lighting was tried here and pulled: the PMREM cube-UV path blew
+   the exposure out under software GL and could not be validated on a real GPU
+   from the build environment. Metals get their punch from a rim light instead. */
 /* ============================================================================
    3. WORLD
    ========================================================================== */
@@ -2269,6 +2567,7 @@ function fitViewport(force){
   camera.aspect = vmCamera.aspect = w/h;
   camera.updateProjectionMatrix(); vmCamera.updateProjectionMatrix();
   renderer.setSize(w, h, false);          // CSS keeps the canvas full-bleed
+  sizePost(w, h);
 }
 // phones report stale dimensions right after a rotation or a fullscreen change,
 // so re-measure a few times instead of trusting the first event
@@ -2583,6 +2882,8 @@ function fire(){
     setTimeout(()=>foley.distantShot(echoAt), 90 + Math.random()*60);
   }
   setTimeout(()=>foley.spring(null,{gain:d.suppressed?1:0.55}), 25);
+  if(!d.rocket && !d.beam)                       // the action cycling behind the report
+    setTimeout(()=>foley.clack(null,{gain:d.cal>1.2?0.5:0.3, freq:d.cal>1.2?900:1500}), 45);
 
   // --- flash + smoke
   const mLocal = weapon.model.userData.muzzlePos.clone().applyMatrix4(weapon.model.matrix);
@@ -3193,6 +3494,7 @@ function explode(point, cfg){
   scorchMark(new THREE.Vector3(point.x, 0.02, point.z), new THREE.Vector3(0,1,0), radius*0.16);
 
   explLight.position.copy(point); explLight.intensity = 40; explLightT = 0.5;
+  screenFlash(0.16 + near*0.22);
 
   // dirt, smoke and sparks
   for(let i=0;i<(isTouch?18:34);i++){
@@ -3253,7 +3555,10 @@ function explode(point, cfg){
   }
   game.shotsLanded++;
 }
+function screenFlash(k){ compMat.uniforms.flash.value = Math.min(0.5, compMat.uniforms.flash.value + k); }
 function updateExplLight(dt){
+  const f = compMat.uniforms.flash;
+  if(f.value > 0) f.value = Math.max(0, f.value - dt*2.2);
   if(explLightT>0){
     explLightT -= dt;
     explLight.intensity = Math.max(0, explLight.intensity * Math.pow(0.0009, dt));
@@ -3882,7 +4187,7 @@ class Enemy {
     const from = this.muzzleWorld();
     const to = camera.position.clone();
     const dist = from.distanceTo(to);
-    foley.shot(this.g.position.clone().setY(1.4), {cal:1.0, gain:0.9});
+    foley.shotAt(this.g.position.clone().setY(1.4), {cal:1.0, occluded: this.see === false});
     muzzleFlashAt(from);
     const spread = 0.030 + dist*0.0042 + (this.state==='advance'?0.05:0) + (this.suppressT>0?0.03:0);
     const dir = to.clone().sub(from).normalize();
@@ -4382,7 +4687,7 @@ function setSlow(on){
   game.timeScale = on? 0.26 : 1;
   foley.setSlow(on);
   hud.slow.style.opacity = on? 1:0;
-  renderer.toneMappingExposure = on? 0.94 : 1.02;
+  exposure = on? 0.94 : 1.02;
 }
 
 function pause(on){
@@ -4720,7 +5025,10 @@ function perfTick(dtReal){
   const before = perf.scale;
   if(avg > 1/36) perf.scale = Math.max(perf.min, perf.scale - 0.15);
   else if(avg < 1/55) perf.scale = Math.min(perf.max, perf.scale + 0.1);
-  if(Math.abs(perf.scale-before) > 0.001) renderer.setPixelRatio(perf.scale);
+  if(Math.abs(perf.scale-before) > 0.001){
+    renderer.setPixelRatio(perf.scale);
+    fitViewport(true);
+  }
 }
 
 /* ---- the loop --------------------------------------------------------------- */
@@ -4763,6 +5071,20 @@ function frameLoop(now){
     aimAssist(dt);
     updateHUD(dt);
     if((frame & 1) === 0) drawMinimap();
+
+    // under a roof? the reverb changes as you step inside
+    const px = player.pos.x, pz = player.pos.z;
+    const inBlock = px>-32 && px<-22 && pz>-24.5 && pz<-15.5;
+    const inHangar= px> 23 && px< 33.5 && pz>-27.5 && pz<-20.5;
+    game.insideK = damp(game.insideK||0, (inBlock||inHangar)?1:0, 3, dt);
+    foley.setInside(game.insideK);
+
+    // ambience: far-off fighting in CONTACT, birds on the range
+    game.ambT = (game.ambT||0) - dt;
+    if(game.ambT <= 0){
+      if(game.mode==='combat'){ game.ambT = rand(6,16); foley.distantBattle(); }
+      else { game.ambT = rand(5,13); foley.bird(); }
+    }
 
     // ears follow the head
     _fwd.set(0,0,-1).applyQuaternion(camera.quaternion);
