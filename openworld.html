@@ -175,6 +175,11 @@ body>canvas{display:block;position:fixed;inset:0;width:100%!important;height:100
   #b-jump,#b-hand{--by:172} #b-swap{--rx:168} #b-look{--rx:168;--by:152}
   #mapwrap,#minimap{width:104px;height:104px}
   #wanted{top:calc(126px + env(safe-area-inset-top))}
+  #cash{font-size:23px} #clock{font-size:11px;margin-top:1px}
+  #area{font-size:10px} #wpdist{font-size:11px;margin-top:3px}
+  #radio{margin-top:4px;padding:3px 9px;font-size:10px}
+  #wep{bottom:calc(38px + env(safe-area-inset-bottom))}
+  #speedo .kph{font-size:34px}
 }
 
 #pausebtn{position:absolute;pointer-events:auto;top:calc(12px + env(safe-area-inset-top));
@@ -468,7 +473,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.3, 1800);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.3, 1800);
 camera.position.set(0, 8, 18);
 
 scene.fog = new THREE.Fog(0xf0a882, 90, 640);
@@ -3380,6 +3385,16 @@ let camShake = 0, camPitchKick = 0, camLookIdle = 0, camBackwards = false;
 const camPos = new THREE.Vector3(), camTarget = new THREE.Vector3();
 function shakeCam(a) { camShake = Math.min(camShake + a, 1.4); }
 
+// Three's camera.fov is VERTICAL. Left alone, a phone held in landscape ends up
+// with a ~110 degree horizontal view, which reads as everything being stretched
+// sideways. So pick the horizontal angle and solve for the vertical one, with a
+// clamp so neither a letterbox frame nor a portrait one goes silly.
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+function vFovFor(hFovDeg, aspect) {
+  const v = 2 * Math.atan(Math.tan(hFovDeg * 0.5 * D2R) / Math.max(aspect, 0.05)) * R2D;
+  return clamp(v, 40, 100);
+}
+
 function updateCamera(dt) {
   const v = player.car;
   const aiming = player.aiming && !v;
@@ -3429,9 +3444,9 @@ function updateCamera(dt) {
   camera.position.lerp(camPos, clamp(dt * (v ? 14 : 20), 0, 1));
   camera.lookAt(camTarget);
 
-  const speedFov = v ? clamp(Math.abs(v.vl) * 0.42, 0, 15) : 0;
-  const wantFov = (aiming ? 46 : 66) + speedFov;
-  camera.fov = damp(camera.fov, wantFov, 6, dt);
+  const speedFov = v ? clamp(Math.abs(v.vl) * 0.38, 0, 12) : 0;
+  const wantH = (aiming ? 56 : 78) + speedFov;          // horizontal, not vertical
+  camera.fov = damp(camera.fov, vFovFor(wantH, camera.aspect), 6, dt);
   camera.updateProjectionMatrix();
 }
 
@@ -4872,6 +4887,8 @@ function startGame() {
 }
 
 /* ── boot ───────────────────────────────────────────────────────────────── */
+camera.fov = vFovFor(78, camera.aspect);
+camera.updateProjectionMatrix();
 player.pos.y = groundY(player.pos.x, player.pos.z);
 player.mesh.position.copy(player.pos);
 camYaw = player.yaw;
@@ -4901,6 +4918,7 @@ renderer.compile(scene, camera);
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
+  camera.fov = vFovFor(78, camera.aspect);
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight, false);
   sizePost();
