@@ -199,6 +199,24 @@ body>canvas{display:block;position:fixed;inset:0;width:100%!important;height:100
 #shoptag.on{opacity:1}
 #mapwrap{pointer-events:auto;cursor:pointer}
 
+#wheel{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));
+  transform:translateX(-50%) scale(.94);display:flex;gap:7px;opacity:0;pointer-events:none;
+  transition:opacity .16s, transform .16s}
+#wheel.on{opacity:1;pointer-events:auto;transform:translateX(-50%) scale(1)}
+.wcard{width:84px;padding:7px 5px 6px;border-radius:11px;background:rgba(9,12,18,.86);
+  border:1.5px solid rgba(255,255,255,.16);text-align:center;
+  backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+.wcard .ic{font-size:17px;line-height:1.1;color:var(--muted)}
+.wcard .n{font-size:9.5px;letter-spacing:1.5px;color:var(--text);text-transform:uppercase;margin-top:1px}
+.wcard .a{font-size:14px;font-weight:700;color:var(--amber);
+  font-family:'JetBrains Mono',monospace;line-height:1.2}
+.wcard.sel{border-color:var(--amber);background:rgba(40,28,10,.9);
+  box-shadow:0 0 18px rgba(255,190,85,.35)}
+.wcard.sel .ic{color:var(--amber)}
+.wcard.locked{opacity:.3}
+.wcard.locked .a{color:var(--muted)}
+@media (max-height:420px){ .wcard{width:72px;padding:5px 4px} .wcard .a{font-size:12px} }
+
 #mapscreen{position:fixed;inset:0;z-index:24;display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 16px
   calc(12px + env(safe-area-inset-bottom));background:rgba(6,8,13,.94);transition:opacity .25s}
@@ -309,6 +327,7 @@ body>canvas{display:block;position:fixed;inset:0;width:100%!important;height:100
   <div id="toasts"></div>
   <div id="prompt">Tap <b>ENTER</b> to drive</div>
   <div id="shoptag"></div>
+  <div id="wheel"></div>
   <div id="dmgvig"></div><div id="lowvig"></div><div id="flash"></div>
 </div>
 
@@ -772,6 +791,28 @@ function updateEnvCube() {
    ========================================================================== */
 
 /* ── a tiny geometry welder ─────────────────────────────────────────────── */
+// See note in instanceTintable: without this, every setColorAt in the file is
+// a no-op and the instance renders white.
+// instanceColor is allocated lazily by the first setColorAt, but the shader
+// program is compiled on the first render — which happens on the title screen,
+// before any of these pools have tinted anything. The program then lacks
+// USE_INSTANCING_COLOR forever and every instance renders white. Allocate the
+// buffer up front so the define is there from the first compile.
+function primeInstanceColor(mesh) {
+  const white = new THREE.Color(1, 1, 1);
+  for (let i = 0; i < mesh.count; i++) mesh.setColorAt(i, white);
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  return mesh;
+}
+
+function instanceTintable(geo, mat) {
+  const n = geo.attributes.position.count;
+  const white = new Float32Array(n * 3).fill(1);
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(white, 3));
+  mat.vertexColors = true;
+  return mat;
+}
+
 const _linTmp = new THREE.Color(), _linCache = new Map();
 function linColor(c) {
   const key = c.getHex();
@@ -906,8 +947,9 @@ Builder.prototype.prism = function (cx, cz, y0, y1, poly, us, vs, col, capTop) {
   for (let k = 0; k < m; k++) {
     const a = poly[k], b = poly[(k + 1) % m];
     const w = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    this.quad(V(cx + a[0], y0, cz + a[1]), V(cx + b[0], y0, cz + b[1]),
-      V(cx + b[0], y1, cz + b[1]), V(cx + a[0], y1, cz + a[1]), w / us, (y1 - y0) / vs, col);
+    // b before a, so the face normal points out of the building, not into it
+    this.quad(V(cx + b[0], y0, cz + b[1]), V(cx + a[0], y0, cz + a[1]),
+      V(cx + a[0], y1, cz + a[1]), V(cx + b[0], y1, cz + b[1]), w / us, (y1 - y0) / vs, col);
   }
   if (capTop !== false) {                       // fan the roof from the first corner
     for (let k = 1; k < m - 1; k++) {
@@ -1082,20 +1124,38 @@ function addSolid(x0, z0, x1, z1, h) {
     }
   return s;
 }
+let solidStamp = 0;
+const _solidOut = [];
 function solidsNear(x, z, r) {
-  const out = [];
+  const out = _solidOut;
+  out.length = 0;
+  const g = ++solidStamp;
   for (let cx = Math.floor((x - r) / CELL); cx <= Math.floor((x + r) / CELL); cx++)
     for (let cz = Math.floor((z - r) / CELL); cz <= Math.floor((z + r) / CELL); cz++) {
       const a = hash.get(key(cx, cz));
-      if (a) for (const s of a) if (out.indexOf(s) < 0) out.push(s);
+      if (!a) continue;
+      for (const s of a) { if (s._g !== g) { s._g = g; out.push(s); } }
     }
   return out;
+}
+// push a circle out of an already-fetched candidate list
+function pushOutList(pos, radius, list) {
+  for (const s of list) {
+    const cx = clamp(pos.x, s.x0, s.x1), cz = clamp(pos.z, s.z0, s.z1);
+    let dx = pos.x - cx, dz = pos.z - cz;
+    let d = Math.hypot(dx, dz);
+    if (d >= radius) continue;
+    if (d < 1e-4) { dx = 1; dz = 0; d = 1e-4; }
+    const pen = radius - d;
+    pos.x += (dx / d) * pen; pos.z += (dz / d) * pen;
+  }
 }
 // push a circle out of any rectangle it overlaps; returns the hit normal or null
 const _pn = new THREE.Vector2();
 function pushOut(pos, radius) {
   let hit = null, deepest = 0;
-  for (const s of solidsNear(pos.x, pos.z, radius + 2)) {
+  const near = solidsNear(pos.x, pos.z, radius + 2);
+  for (const s of near) {
     const cx = clamp(pos.x, s.x0, s.x1), cz = clamp(pos.z, s.z0, s.z1);
     let dx = pos.x - cx, dz = pos.z - cz;
     let d = Math.hypot(dx, dz);
@@ -1420,7 +1480,9 @@ function signalState(axis) {
 
 const sigLampGeo = new THREE.BoxGeometry(0.2, 0.26, 0.2);
 const lampMesh = new THREE.InstancedMesh(sigLampGeo,
-  new THREE.MeshBasicMaterial({ toneMapped: false }), Math.max(signalHeads.length, 1));
+  instanceTintable(sigLampGeo, new THREE.MeshBasicMaterial({ toneMapped: false })),
+  Math.max(signalHeads.length, 1));
+primeInstanceColor(lampMesh);
 lampMesh.frustumCulled = false;
 scene.add(lampMesh);
 
@@ -1637,10 +1699,11 @@ const poolTex = tex(64, 64, (c, w, h) => {
 poolTex.wrapS = poolTex.wrapT = THREE.ClampToEdgeWrapping;
 const poolGeo = new THREE.PlaneGeometry(1, 1);
 poolGeo.rotateX(-Math.PI / 2);
-const poolMesh = new THREE.InstancedMesh(poolGeo, new THREE.MeshBasicMaterial({
+const poolMesh = new THREE.InstancedMesh(poolGeo, instanceTintable(poolGeo, new THREE.MeshBasicMaterial({
   map: poolTex, transparent: true, blending: THREE.AdditiveBlending,
   depthWrite: false, fog: true,
-}), POOL_N);
+})), POOL_N);
+primeInstanceColor(poolMesh);
 poolMesh.frustumCulled = false;
 poolMesh.renderOrder = 2;
 scene.add(poolMesh);
@@ -1674,7 +1737,7 @@ function updateLightPools() {
       const fade = 1 - Math.sqrt(g._d) / 70;
       _po.position.set(g.x, 0.055 + g.y * 0.001, g.z);
       _po.scale.set(g.r, 1, g.r);
-      _pc.copy(g.col).multiplyScalar(g.power * n * fade * 1.15);
+      _pc.copy(g.col).multiplyScalar(g.power * n * fade * 0.72);
       poolMesh.setColorAt(i, _pc);
     }
     _po.updateMatrix();
@@ -2551,6 +2614,9 @@ function killPerson(p, silent) {
   if (p.dead) return;
   p.dead = true; p.state = 'dead'; p.fade = 0;
   p.group.userData.gun.visible = false;
+  p.rag = makeRagdoll(p.group, p.pos, p.yaw, p.thrown);
+  p.thrown.set(0, 0, 0);
+  bloodPool(p.pos);
   if (!silent) {
     addWanted(p.cop ? 1.6 : 0.85, p.cop ? 'copdown' : 'homicide');
     toast(p.cop ? 'OFFICER DOWN' : 'CIVILIAN DOWN', p.cop ? 'bad' : '');
@@ -2561,13 +2627,14 @@ function updatePed(p, dt) {
   const g = p.group;
   if (p.dead) {
     p.fade += dt;
-    slump(g, dt);
-    if (p.thrown.lengthSq() > 0.01) {                   // carry the momentum of whatever hit them
-      p.pos.addScaledVector(p.thrown, dt);
-      p.thrown.multiplyScalar(1 - clamp(dt * 3.2, 0, 1));
-      pushOut(p.pos, 0.4);
+    if (p.rag && !p.ragAsleep) {
+      const alive = stepRagdoll(p.rag, dt);
+      poseRagdoll(p.rag);
+      p.pos.copy(p.rag.pts[0].p);                        // the hips are where the body is now
+      p.pos.y = 0;
+      if (!alive && p.fade > 2.5) p.ragAsleep = true;    // settled: leave it alone from here
+      if (!p.bled && p.fade > 1.4) { p.bled = true; bloodPool(p.pos); }
     }
-    g.position.set(p.pos.x, groundY(p.pos.x, p.pos.z), p.pos.z);
     if (p.fade > 26) removePed(p);
     return;
   }
@@ -2623,7 +2690,8 @@ function updatePed(p, dt) {
     if (v.dead || Math.abs(v.vl) < 3) continue;
     const dx = p.pos.x - v.pos.x, dz = p.pos.z - v.pos.z;
     if (dx * dx + dz * dz > 9) continue;
-    p.thrown.set(v.vel.x, 0, v.vel.z).multiplyScalar(0.55);
+    p.thrown.set(v.vel.x, 0.5 + Math.abs(v.vl) * 0.05, v.vel.z).multiplyScalar(0.62);
+    bloodSpray(_tmp.copy(p.pos).setY(0.95), _rd.copy(v.vel).normalize(), 1.25);
     killPerson(p, false);
     if (v === player.car) { toast('HIT AND RUN', 'bad'); sfx.thud(p.pos, 1); }
     break;
@@ -2655,14 +2723,15 @@ function groundY(x, z) { return onRoad(x, z) || z > HALF + ROAD / 2 ? 0.02 : KER
    ========================================================================== */
 const PMAX = 260;
 const partGeo = new THREE.BoxGeometry(1, 1, 1);
-const partMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false });
-const partMesh = new THREE.InstancedMesh(partGeo, partMat, PMAX);
+const partMat = instanceTintable(partGeo,
+  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false }));
+const partMesh = primeInstanceColor(new THREE.InstancedMesh(partGeo, partMat, PMAX));
 partMesh.frustumCulled = false;
 partMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 scene.add(partMesh);
 const parts = [];
 for (let i = 0; i < PMAX; i++) parts.push({
-  life: 0, ttl: 1, pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+  life: 1, ttl: 1, pos: new THREE.Vector3(), vel: new THREE.Vector3(),
   size: 0.2, grav: -14, col: new THREE.Color(), drag: 1.6, glow: false,
 });
 let partCursor = 0;
@@ -2685,6 +2754,7 @@ function burst(pos, n, opts) {
     p.drag = opts.drag !== undefined ? opts.drag : 1.6;
     p.col.set(opts.col !== undefined ? opts.col : 0xffffff);
     if (opts.col2 !== undefined && chance(0.5)) p.col.set(opts.col2);
+    p.col.convertSRGBToLinear();
     p.glow = !!opts.glow;
   }
 }
@@ -2749,28 +2819,437 @@ function updateTracers(dt) {
 const blastLight = new THREE.PointLight(0xffa040, 0, 60, 2);
 scene.add(blastLight);
 let blastTimer = 0;
+
+/* ── ground decals ───────────────────────────────────────────────────────────
+   Blood and scorch both land on the floor and both need to fade, so they share
+   one instanced quad pool. Per-instance alpha rides in on a custom attribute,
+   because setColorAt only carries RGB.
+   ------------------------------------------------------------------------- */
+const splatTex = tex(128, 128, (c, w, h) => {
+  c.clearRect(0, 0, w, h);
+  for (let i = 0; i < 26; i++) {                  // a clump of overlapping blobs
+    const a = rand(0, TAU), r = Math.pow(Math.random(), 0.6) * w * 0.34;
+    const x = w / 2 + Math.cos(a) * r, y = h / 2 + Math.sin(a) * r;
+    const rad = rand(w * 0.04, w * 0.17) * (1 - r / (w * 0.5) * 0.5);
+    const g = c.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.6, 'rgba(255,255,255,.85)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.arc(x, y, rad, 0, TAU); c.fill();
+  }
+  for (let i = 0; i < 18; i++) {                  // flung droplets around the edge
+    const a = rand(0, TAU), r = rand(w * 0.3, w * 0.48);
+    const x = w / 2 + Math.cos(a) * r, y = h / 2 + Math.sin(a) * r;
+    c.fillStyle = 'rgba(255,255,255,' + rand(0.35, 0.8) + ')';
+    c.beginPath(); c.arc(x, y, rand(1.2, 4.5), 0, TAU); c.fill();
+  }
+});
+splatTex.wrapS = splatTex.wrapT = THREE.ClampToEdgeWrapping;
+
+const DECAL_N = 110;
+const decalGeo = new THREE.PlaneGeometry(1, 1);
+decalGeo.rotateX(-Math.PI / 2);
+decalGeo.setAttribute('aAlpha', new THREE.InstancedBufferAttribute(new Float32Array(DECAL_N), 1));
+const decalMat = instanceTintable(decalGeo, new THREE.MeshBasicMaterial({
+  map: splatTex, transparent: true, depthWrite: false, toneMapped: false,
+}));
+decalMat.onBeforeCompile = sh => {
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float aAlpha;\nvarying float vAlpha;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvAlpha = aAlpha;');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying float vAlpha;')
+    .replace(OUT_FRAG, 'gl_FragColor = vec4( outgoingLight, diffuseColor.a * vAlpha );');
+};
+const decalMesh = primeInstanceColor(new THREE.InstancedMesh(decalGeo, decalMat, DECAL_N));
+decalMesh.frustumCulled = false;
+decalMesh.renderOrder = 1;
+scene.add(decalMesh);
+const decals = [];
+for (let i = 0; i < DECAL_N; i++) decals.push({ life: 1, ttl: 1, fade: 6 });
+let decalCursor = 0;
+const _do = new THREE.Object3D(), _dc = new THREE.Color();
+
+function decal(x, z, size, col, ttl, fade) {
+  const i = decalCursor = (decalCursor + 1) % DECAL_N;
+  const d = decals[i];
+  d.life = 0; d.ttl = ttl; d.fade = fade === undefined ? 6 : fade;
+  _do.position.set(x, groundY(x, z) + 0.022 + (i % 7) * 0.0012, z);   // stagger to stop z-fighting
+  _do.rotation.set(0, rand(0, TAU), 0);
+  _do.scale.set(size, 1, size);
+  _do.updateMatrix();
+  decalMesh.setMatrixAt(i, _do.matrix);
+  decalMesh.setColorAt(i, _dc.set(col).convertSRGBToLinear());
+  decalGeo.attributes.aAlpha.array[i] = 1;
+  decalMesh.instanceMatrix.needsUpdate = true;
+  if (decalMesh.instanceColor) decalMesh.instanceColor.needsUpdate = true;
+  decalGeo.attributes.aAlpha.needsUpdate = true;
+}
+function updateDecals(dt) {
+  let dirty = false;
+  const a = decalGeo.attributes.aAlpha;
+  for (let i = 0; i < DECAL_N; i++) {
+    const d = decals[i];
+    if (d.life >= d.ttl) continue;
+    d.life += dt;
+    const left = d.ttl - d.life;
+    const want = clamp(left / d.fade, 0, 1);
+    if (Math.abs(a.array[i] - want) > 0.004) { a.array[i] = want; dirty = true; }
+  }
+  if (dirty) a.needsUpdate = true;
+}
+
+/* ── blood ──────────────────────────────────────────────────────────────── */
+const BLOOD_DARK = 0x6e0a0e, BLOOD_BRIGHT = 0xc01620;
+function bloodSpray(at, dir, power) {
+  const n = Math.round(7 + power * 12);
+  burst(at, n, {                                               // droplets, thrown along the shot
+    col: BLOOD_BRIGHT, col2: BLOOD_DARK, speed: 6 + power * 7, size: 0.05 + power * 0.028,
+    ttl: 0.55 + power * 0.25, dir, spread: 0.1, grav: -19, drag: 1.3,
+  });
+  burst(at, Math.round(3 + power * 4), {                       // a fine mist that hangs briefly
+    col: 0x5c080c, speed: 1.9, size: 0.09 + power * 0.05, ttl: 0.34, spread: 0.16,
+    grav: -3, drag: 4.2,
+  });
+  // and what lands on the floor
+  const lands = _tmp.copy(at).addScaledVector(dir, rand(0.4, 1.6));
+  decal(lands.x + rand(-0.5, 0.5), lands.z + rand(-0.5, 0.5),
+    rand(0.7, 1.3) + power * 0.6, BLOOD_DARK, 34, 8);
+}
+function bloodPool(p) {
+  decal(p.x + rand(-0.3, 0.3), p.z + rand(-0.3, 0.3), rand(1.5, 2.3), BLOOD_DARK, 40, 10);
+}
+
+/* ── ragdolls ────────────────────────────────────────────────────────────────
+   Seven verlet points with distance constraints between them — cheap, stable,
+   and it falls the way a body falls. The rig's limbs are single rigid meshes,
+   so each one only needs an anchor and an end point to aim at.
+   ------------------------------------------------------------------------- */
+const RAG_UP = new THREE.Vector3(0, 1, 0), RAG_DOWN = new THREE.Vector3(0, -1, 0);
+const _ra = new THREE.Vector3(), _rb = new THREE.Vector3(), _rm = new THREE.Matrix4();
+const _rq = new THREE.Quaternion();
+const RAG_HIPS = 0, RAG_CHEST = 1, RAG_HEAD = 2, RAG_HL = 3, RAG_HR = 4, RAG_FL = 5, RAG_FR = 6;
+
+function makeRagdoll(group, pos, yaw, impulse) {
+  const y = groundY(pos.x, pos.z);
+  const f = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+  const r = new THREE.Vector3(-Math.cos(yaw), 0, Math.sin(yaw));
+  const at = (dx, dy, dz) => new THREE.Vector3(
+    pos.x + r.x * dx + f.x * dz, y + dy, pos.z + r.z * dx + f.z * dz);
+  const pts = [
+    { p: at(0, 0.94, 0), rad: 0.22 },        // hips
+    { p: at(0, 1.5, 0), rad: 0.22 },         // chest
+    { p: at(0, 1.82, 0), rad: 0.17 },        // head
+    { p: at(-0.3, 0.96, 0.05), rad: 0.11 },  // hand L
+    { p: at(0.3, 0.96, 0.05), rad: 0.11 },   // hand R
+    { p: at(-0.13, 0.1, 0.04), rad: 0.13 },  // foot L
+    { p: at(0.13, 0.1, 0.04), rad: 0.13 },   // foot R
+  ];
+  for (const q of pts) {
+    q.o = q.p.clone();
+    if (impulse) q.o.addScaledVector(impulse, -0.016);   // seed the throw
+    q.o.x -= rand(-0.01, 0.01); q.o.z -= rand(-0.01, 0.01);
+  }
+  // rigid: the torso holds its shape. rope: can fold up, cannot stretch.
+  const rigid = (i, j) => { const d = pts[i].p.distanceTo(pts[j].p); return { i, j, min: d, max: d, stiff: 1 }; };
+  const rope = (i, j, floor, stiff) => {
+    const d = pts[i].p.distanceTo(pts[j].p);
+    return { i, j, min: d * (floor === undefined ? 0.58 : floor), max: d, stiff: stiff || 1 };
+  };
+  // a shove so it topples instead of settling upright on its own legs
+  const push = rand(0.018, 0.034), pa = rand(0, TAU);
+  pts[RAG_CHEST].o.x -= Math.cos(pa) * push;
+  pts[RAG_CHEST].o.z -= Math.sin(pa) * push;
+  pts[RAG_HEAD].o.x -= Math.cos(pa) * push * 1.5;
+  pts[RAG_HEAD].o.z -= Math.sin(pa) * push * 1.5;
+  return {
+    pts,
+    links: [
+      rigid(RAG_HIPS, RAG_CHEST), rigid(RAG_CHEST, RAG_HEAD),
+      rope(RAG_HIPS, RAG_HEAD, 0.7, 0.5),                      // spine bends, does not stretch
+      rope(RAG_CHEST, RAG_HL, 0.5), rope(RAG_CHEST, RAG_HR, 0.5),
+      rope(RAG_HIPS, RAG_FL, 0.5), rope(RAG_HIPS, RAG_FR, 0.5),
+      rope(RAG_HL, RAG_HR, 0.0, 0.12), rope(RAG_FL, RAG_FR, 0.0, 0.18),
+      rope(RAG_HIPS, RAG_HL, 0.35, 0.25), rope(RAG_HIPS, RAG_HR, 0.35, 0.25),
+    ],
+    fwd: f.clone(), energy: 1, acc: 0, group,
+  };
+}
+
+const _ragNear = [];
+function stepRagdoll(rag, dt) {
+  const STEP = 1 / 60;
+  rag.acc = Math.min(rag.acc + dt, 0.05);         // at most three catch-up steps
+  let moved = 0;
+  while (rag.acc >= STEP) {
+    rag.acc -= STEP;
+    for (const q of rag.pts) {
+      const vx = (q.p.x - q.o.x) * 0.985, vy = (q.p.y - q.o.y) * 0.985, vz = (q.p.z - q.o.z) * 0.985;
+      q.o.copy(q.p);
+      q.p.x += vx; q.p.y += vy - 22 * STEP * STEP; q.p.z += vz;
+      moved += Math.abs(vx) + Math.abs(vy) + Math.abs(vz);
+    }
+    // the whole body sits inside one query, so fetch the candidates once
+    const hip = rag.pts[RAG_HIPS].p;
+    _ragNear.length = 0;
+    for (const sd of solidsNear(hip.x, hip.z, 2.6)) _ragNear.push(sd);
+    for (let it = 0; it < 6; it++) {
+      for (const l of rag.links) {
+        const a = rag.pts[l.i].p, b = rag.pts[l.j].p;
+        _ra.subVectors(b, a);
+        const d = _ra.length() || 1e-5;
+        const want = d > l.max ? l.max : d < l.min ? l.min : d;
+        if (want === d) continue;                      // inside its range, leave it alone
+        _ra.multiplyScalar(((d - want) / d) * 0.5 * l.stiff);
+        a.add(_ra); b.sub(_ra);
+      }
+      for (const q of rag.pts) {
+        const gy = groundY(q.p.x, q.p.z) + q.rad;
+        if (q.p.y < gy) {
+          q.p.y = gy;
+          q.o.x += (q.p.x - q.o.x) * 0.45;             // ground friction
+          q.o.z += (q.p.z - q.o.z) * 0.45;
+          q.o.y = q.p.y - (q.o.y - q.p.y) * 0.18;      // a little bounce
+        }
+      }
+    }
+    if (_ragNear.length) for (const q of rag.pts) pushOutList(q.p, q.rad, _ragNear);
+  }
+  rag.energy = damp(rag.energy, moved, 8, dt);
+  return rag.energy > 0.006;
+}
+
+function poseRagdoll(rag) {
+  const g = rag.group, u = g.userData, P = rag.pts;
+  u.hips.position.set(0, 0, 0);
+  g.position.copy(P[RAG_HIPS].p);
+  _ra.subVectors(P[RAG_CHEST].p, P[RAG_HIPS].p);
+  if (_ra.lengthSq() < 1e-6) _ra.copy(RAG_UP);
+  _ra.normalize();
+  _rb.copy(rag.fwd);
+  const x = new THREE.Vector3().crossVectors(_ra, _rb);
+  if (x.lengthSq() < 1e-6) x.set(1, 0, 0);
+  x.normalize();
+  _rb.crossVectors(x, _ra).normalize();
+  _rm.makeBasis(x, _ra, _rb);
+  g.quaternion.setFromRotationMatrix(_rm);
+  g.updateMatrixWorld(true);
+  const aimLimb = (pivot, target) => {
+    _rb.copy(pivot.position).applyMatrix4(g.matrixWorld);   // the joint, in world
+    _ra.subVectors(target, _rb);
+    if (_ra.lengthSq() < 1e-6) return;
+    _ra.normalize().applyQuaternion(_rq.copy(g.quaternion).invert());
+    pivot.quaternion.setFromUnitVectors(RAG_DOWN, _ra);
+  };
+  aimLimb(u.armL, P[RAG_HL].p);
+  aimLimb(u.armR, P[RAG_HR].p);
+  aimLimb(u.legL, P[RAG_FL].p);
+  aimLimb(u.legR, P[RAG_FR].p);
+  // let the head lag behind the chest a little
+  _ra.subVectors(P[RAG_HEAD].p, P[RAG_CHEST].p).normalize()
+    .applyQuaternion(_rq.copy(g.quaternion).invert());
+  u.head.quaternion.setFromUnitVectors(RAG_UP, _ra);
+}
+
+/* ── explosions ──────────────────────────────────────────────────────────────
+   Staged, because a real one is not a single puff: a white core, a fireball
+   that expands and cools, a shockwave skimming the ground, debris with
+   trails, then smoke that keeps rising long after the light has gone.
+   ------------------------------------------------------------------------- */
+const FIRE_N = 5, WAVE_N = 4;
+const fireballs = [], shockwaves = [];
+{
+  const fg = new THREE.SphereGeometry(1, 14, 10);
+  for (let i = 0; i < FIRE_N; i++) {
+    const m = new THREE.Mesh(fg, new THREE.MeshBasicMaterial({
+      color: 0xffb347, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+      depthWrite: false, toneMapped: false,
+    }));
+    m.visible = false; m.renderOrder = 3;
+    scene.add(m);
+    fireballs.push({ mesh: m, life: 0, ttl: 1, r0: 1, r1: 4 });
+  }
+  const rg = new THREE.RingGeometry(0.62, 1, 34);
+  rg.rotateX(-Math.PI / 2);
+  for (let i = 0; i < WAVE_N; i++) {
+    const m = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({
+      color: 0xffe0b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+      depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+    }));
+    m.visible = false; m.renderOrder = 3;
+    scene.add(m);
+    shockwaves.push({ mesh: m, life: 0, ttl: 1, r1: 12 });
+  }
+}
+let fireCursor = 0, waveCursor = 0;
+
+function updateBlasts(dt) {
+  for (const f of fireballs) {
+    if (!f.mesh.visible) continue;
+    f.life += dt;
+    const t = f.life / f.ttl;
+    if (t >= 1) { f.mesh.visible = false; continue; }
+    const r = lerp(f.r0, f.r1, 1 - Math.pow(1 - t, 2.4));     // fast out, then settle
+    f.mesh.scale.setScalar(r);
+    f.mesh.position.y += dt * 1.6 * (1 - t);                   // the ball lifts as it cools
+    f.mesh.material.opacity = (1 - t) * (1 - t) * 1.15;
+    f.mesh.material.color.setHSL(lerp(0.13, 0.015, t), lerp(0.55, 1, t), lerp(0.92, 0.28, t));
+  }
+  for (const w of shockwaves) {
+    if (!w.mesh.visible) continue;
+    w.life += dt;
+    const t = w.life / w.ttl;
+    if (t >= 1) { w.mesh.visible = false; continue; }
+    const r = w.r1 * (1 - Math.pow(1 - t, 3));
+    w.mesh.scale.set(r, 1, r);
+    w.mesh.material.opacity = (1 - t) * 0.65;
+  }
+}
+
 function explode(pos, power) {
-  burst(pos, 30, { col: 0xffb347, col2: 0xff4b1f, speed: 15 * power, size: 0.55, ttl: 0.75, spread: 0.8, glow: true, grav: 4, drag: 2.4 });
-  burst(pos, 22, { col: 0x2b2b2b, col2: 0x555555, speed: 7 * power, size: 0.9, ttl: 2.1, spread: 1.2, grav: 2.4, drag: 2.8 });
-  burst(pos, 14, { col: 0xffe9a8, speed: 22 * power, size: 0.14, ttl: 0.9, grav: -10 });
-  blastLight.position.copy(pos); blastLight.intensity = 28 * power; blastTimer = 0.45;
-  sfx.boom(pos, power);
-  shakeCam(clamp(0.9 * power, 0, 1.2));
-  scare(pos.x, pos.z, 42);
-  // knock everything nearby about
+  power = power || 1;
+  const P = clamp(power, 0.4, 3);
+
+  // 1. the core: brief, white, over the bloom threshold by a mile
+  const core = fireballs[fireCursor = (fireCursor + 1) % FIRE_N];
+  core.mesh.position.copy(pos); core.mesh.visible = true;
+  core.life = 0; core.ttl = 0.15 * P; core.r0 = 0.45 * P; core.r1 = 2.1 * P;
+  core.mesh.material.color.setRGB(2.1, 1.8, 1.45);
+
+  // 2. the fireball proper, cooling from yellow to deep red as it grows
+  const ball = fireballs[fireCursor = (fireCursor + 1) % FIRE_N];
+  ball.mesh.position.copy(pos); ball.mesh.visible = true;
+  ball.life = 0; ball.ttl = 0.85 * P; ball.r0 = 1.1 * P; ball.r1 = 6.2 * P;
+
+  // 3. the shockwave skimming the ground
+  const wave = shockwaves[waveCursor = (waveCursor + 1) % WAVE_N];
+  wave.mesh.position.set(pos.x, groundY(pos.x, pos.z) + 0.12, pos.z);
+  wave.mesh.visible = true;
+  wave.life = 0; wave.ttl = 0.52; wave.r1 = 15 * P;
+  wave.mesh.material.color.setRGB(2.2, 1.7, 1.1);
+
+  // 4. burning debris, thrown hard and fast
+  burst(pos, Math.round(16 * P), {
+    col: 0xffdd88, col2: 0xff5a1e, speed: 26 * P, size: 0.17, ttl: 1.1, grav: -20, drag: 0.5, glow: true,
+  });
+  burst(pos, Math.round(12 * P), {
+    col: 0x40332c, col2: 0x6b5346, speed: 15 * P, size: 0.3, ttl: 2.2, grav: -17, drag: 0.9,
+  });
+  // 5. smoke: slow, heavy, rising, and it outlives everything else
+  burst(pos, Math.round(22 * P), {
+    col: 0x2a2724, col2: 0x585048, speed: 5.5 * P, size: 1.15 * P, ttl: 3.4,
+    spread: 1.1 * P, up: 2.2, grav: 2.6, drag: 1.9,
+  });
+  burst(pos, Math.round(10 * P), {
+    col: 0xffa84a, col2: 0xff6a20, speed: 9 * P, size: 0.6 * P, ttl: 0.7, spread: 0.7, grav: 4, glow: true,
+  });
+
+  decal(pos.x, pos.z, 5.5 * P, 0x141210, 95, 22);              // scorch
+
+  blastLight.position.copy(pos);
+  blastLight.intensity = 34 * P;
+  blastTimer = 0.5;
+  flashAmount = Math.max(flashAmount, clamp(0.5 * P / Math.max(1, camera.position.distanceTo(pos) * 0.09), 0, 0.7));
+  sfx.boom(pos, P);
+  shakeCam(clamp(1.1 * P, 0, 1.4));
+  scare(pos.x, pos.z, 46 * P);
+
+  // and what it does to everything standing near it
+  const R = 13 * P;
   for (const v of vehicles) {
     const d = v.pos.distanceTo(pos);
-    if (d < 13 && !v.dead) { damageVehicle(v, (13 - d) * 9, 'blast'); v.vt += rand(-6, 6); v.vl += rand(-4, 8); }
-  }
-  for (const p of peds) {
-    const d = p.pos.distanceTo(pos);
-    if (d < 11 && !p.dead) {
-      p.thrown.subVectors(p.pos, pos).setY(0).normalize().multiplyScalar((11 - d) * 1.5);
-      killPerson(p, false);
-      burst(p.pos.clone().setY(1), 9, { col: 0x8a0f12, speed: 6, size: 0.14, ttl: 0.8 });
+    if (d < R && !v.dead) {
+      damageVehicle(v, (R - d) * 9, 'blast');
+      v.vt += rand(-7, 7) * P; v.vl += rand(-5, 9) * P;
     }
   }
-  if (player.pos.distanceTo(pos) < 12 && !player.car) hurtPlayer((12 - player.pos.distanceTo(pos)) * 7, 'blast');
+  for (const q of peds) {
+    const d = q.pos.distanceTo(pos);
+    if (d < R * 0.85 && !q.dead) {
+      q.thrown.subVectors(q.pos, pos).setY(0).normalize().multiplyScalar((R * 0.85 - d) * 2.1);
+      q.thrown.y = (R * 0.85 - d) * 0.9;
+      killPerson(q, false);
+      bloodSpray(q.pos.clone().setY(1.1), _tmp.copy(q.thrown).normalize(), 1.4);
+    }
+  }
+  const pd = player.pos.distanceTo(pos);
+  if (pd < R && !player.car) hurtPlayer((R - pd) * 7.5, 'blast');
+  else if (pd < R && player.car) damageVehicle(player.car, (R - pd) * 7, 'blast');
+}
+
+/* ── rockets ─────────────────────────────────────────────────────────────── */
+function rocketGeo() {
+  const b = new Builder();
+  const BODY = new THREE.Color(0x4a5560), WARHEAD = new THREE.Color(0x6e3b2a), FIN = new THREE.Color(0x2a3138);
+  b.tube([new THREE.Vector3(0, 0, -0.34), new THREE.Vector3(0, 0, 0.16)], [0.055, 0.055], 8, BODY);
+  b.tube([new THREE.Vector3(0, 0, 0.16), new THREE.Vector3(0, 0, 0.3)], [0.082, 0.082], 8, WARHEAD);
+  b.tube([new THREE.Vector3(0, 0, 0.3), new THREE.Vector3(0, 0, 0.46)], [0.082, 0.012], 8, WARHEAD);
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * TAU, dx = Math.cos(a), dy = Math.sin(a);
+    b.box(dx * 0.1, dy * 0.1, -0.28, Math.abs(dx) * 0.14 + 0.02, Math.abs(dy) * 0.14 + 0.02, 0.16, 1, 1, FIN);
+  }
+  return b.smooth(40).build();
+}
+const rockets = [];
+let rocketGeoCache = null;
+function fireRocket(from, dir) {
+  if (!rocketGeoCache) rocketGeoCache = rocketGeo();
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(rocketGeoCache, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  body.castShadow = true;
+  g.add(body);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffd07a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  flame.rotation.x = Math.PI / 2;
+  flame.position.z = -0.72;
+  g.add(flame);
+  g.position.copy(from);
+  scene.add(g);
+  rockets.push({ group: g, flame, pos: from.clone(), vel: dir.clone().multiplyScalar(46), life: 0, armed: 0 });
+  sfx.rocket(from);
+}
+function updateRockets(dt) {
+  for (let i = rockets.length - 1; i >= 0; i--) {
+    const r = rockets[i];
+    r.life += dt; r.armed += dt;
+    r.vel.y -= 3.2 * dt;                                  // just enough drop to read
+    r.vel.multiplyScalar(1 + 1.1 * dt);                   // and it keeps accelerating
+    const step = _tmp.copy(r.vel).multiplyScalar(dt);
+    const dist = step.length();
+    const dir = step.clone().normalize();
+
+    let hit = null;
+    const wall = rayWall(r.pos, dir, dist + 0.4);
+    if (wall > 0) hit = r.pos.clone().addScaledVector(dir, wall);
+    if (!hit && r.armed > 0.06) {
+      for (const q of peds) {
+        if (q.dead) continue;
+        const t = raySphere(r.pos, dir, _rb.set(q.pos.x, q.pos.y + 1, q.pos.z), 0.7, dist + 0.4);
+        if (t > 0) { hit = r.pos.clone().addScaledVector(dir, t); break; }
+      }
+      if (!hit) for (const v of vehicles) {
+        if (v.dead || v === player.car) continue;
+        const t = raySphere(r.pos, dir, _rb.set(v.pos.x, 0.9, v.pos.z), v.radius, dist + 0.4);
+        if (t > 0) { hit = r.pos.clone().addScaledVector(dir, t); break; }
+      }
+    }
+    r.pos.add(step);
+    if (r.pos.y < 0.12) { hit = r.pos.clone().setY(0.1); }
+
+    r.group.position.copy(r.pos);
+    r.group.lookAt(_rb.copy(r.pos).add(r.vel));
+    r.flame.scale.setScalar(rand(0.7, 1.3));
+    if (game.frame % 2 === 0) {
+      burst(r.pos, 1, { col: 0x8a8378, col2: 0xcfc6ba, speed: 1.2, size: 0.26, ttl: 1.6, grav: 1.4, drag: 2.2 });
+    }
+    if (hit || r.life > 7) {
+      explode(hit || r.pos, 1.55);
+      scene.remove(r.group);
+      r.flame.geometry.dispose();
+      rockets.splice(i, 1);
+    }
+  }
 }
 
 /* ── ray queries ────────────────────────────────────────────────────────── */
@@ -2826,6 +3305,7 @@ const WEAPONS = [
   { id: 'pistol', name: 'Pistol', dmg: 30, rpm: 340, mag: 12, reserve: 108, maxRes: 180, spread: 0.014, auto: false, pellets: 1, range: 140, kick: 1.5, col: 0xffe3a0 },
   { id: 'smg', name: 'Micro SMG', dmg: 19, rpm: 850, mag: 30, reserve: 150, maxRes: 360, spread: 0.042, auto: true, pellets: 1, range: 110, kick: 0.9, col: 0xfff0b0 },
   { id: 'shotgun', name: 'Pump 12g', dmg: 15, rpm: 78, mag: 6, reserve: 42, maxRes: 90, spread: 0.075, auto: false, pellets: 8, range: 48, kick: 4.2, col: 0xffd28a },
+  { id: 'rpg', name: 'RPG-7', dmg: 0, rpm: 24, mag: 1, reserve: 4, maxRes: 12, spread: 0.006, auto: false, pellets: 1, range: 400, kick: 11, col: 0xffd0a0, rocket: true },
 ];
 const inv = WEAPONS.map(w => ({ id: w.id, mag: w.mag, res: w.reserve, owned: w.id === 'pistol' }));
 
@@ -2853,6 +3333,19 @@ function shoot() {
 
   camera.getWorldDirection(_rd);
   const muzzle = _tmp.copy(player.pos).setY(player.pos.y + 1.28).addScaledVector(_rd, 0.7);
+  if (w.rocket) {                                   // a launcher throws a thing, it does not trace
+    fireRocket(muzzle.clone(), _rd.clone().normalize());
+    burst(muzzle, 14, { col: 0xb9b0a4, col2: 0x6d665c, speed: 9, size: 0.3, ttl: 1.3,
+      dir: _rd.clone().negate(), grav: 1.2, drag: 2.2 });
+    burst(muzzle, 8, { col: 0xffd07a, speed: 12, size: 0.2, ttl: 0.2, dir: _rd, grav: 0, glow: true });
+    player.recoil = Math.min(player.recoil + 0.12, 0.2);
+    camPitchKick += 0.075;
+    shakeCam(0.4);
+    scare(player.pos.x, player.pos.z, 40);
+    addWanted(0.5, 'rocket');
+    hudWeapon();
+    return;
+  }
   for (let k = 0; k < w.pellets; k++) {
     const dir = _rd.clone();
     dir.x += rand(-1, 1) * w.spread; dir.y += rand(-1, 1) * w.spread; dir.z += rand(-1, 1) * w.spread;
@@ -2864,7 +3357,7 @@ function shoot() {
     if (hit.kind === 'ped') {
       const dmg = w.dmg * (hit.head ? 2.6 : 1);
       hit.obj.hp -= dmg;
-      burst(end, 5, { col: 0x8d1016, col2: 0xd42a2a, speed: 5, size: 0.11, ttl: 0.55, dir });
+      bloodSpray(end, dir, hit.head ? 1.5 : 0.85);
       hitmark(hit.obj.hp <= 0);
       if (hit.obj.hp <= 0) killPerson(hit.obj, false);
       else { hit.obj.panic = 9; addWanted(hit.obj.cop ? 0.7 : 0.4, 'assault'); }
@@ -2959,6 +3452,10 @@ function updateWanted(dt) {
     for (const p of peds) if (p.cop && !p.dead && p.pos.distanceTo(player.pos) > 70) removePed(p);
   }
   player.threat = Math.max(0, player.threat - dt);
+  if (wheelTimer > 0) {
+    wheelTimer -= dt;
+    if (wheelTimer <= 0 || player.car) closeWheel();
+  }
 
   // getting busted: on foot, stationary, an officer on top of you
   if (wanted.stars > 0 && !player.car && player.alive) {
@@ -3194,6 +3691,7 @@ function enterCar(v) {
   v.throttle = v.brake = 0;
   player.mesh.visible = false;
   setAim(false);
+  closeWheel();
   camDist = 9.5;
   sfx.doorClose();
   sfx.engineOn(v);
@@ -3239,7 +3737,8 @@ function wasted(cause) {
   player.alive = false; player.dead = 0;
   player.hp = 0;
   if (player.car) exitCar(true);
-  slump(player.mesh, 1);
+  player.rag = makeRagdoll(player.mesh, player.pos, player.yaw, null);
+  bloodPool(player.pos);
   const lost = Math.floor(game.cash * 0.12);
   game.cash = Math.max(0, game.cash - lost);
   endScreen('WASTED', 'Keys General patched you up and billed you $' + lost);
@@ -3256,7 +3755,14 @@ function respawn() {
   player.alive = true;
   player.hp = 100; player.armor = 0; player.vy = 0;
   player.invuln = 3;
+  player.rag = null;
+  player.ragAsleep = false;
+  player.dead = 0;
   player.mesh.rotation.set(0, 0, 0);
+  player.mesh.quaternion.set(0, 0, 0, 1);
+  player.mesh.userData.hips.position.set(0, 0.92, 0);
+  for (const part of ['armL', 'armR', 'legL', 'legR']) player.mesh.userData[part].quaternion.set(0, 0, 0, 1);
+  player.mesh.userData.head.quaternion.set(0, 0, 0, 1);
   player.mesh.visible = true;
   player.bustTimer = 0;
   wanted.heat = 0; wanted.stars = 0; hudStars();
@@ -3292,7 +3798,14 @@ function updatePlayerFoot(dt) {
   player.invuln = Math.max(0, player.invuln - dt);
   player.recoil = damp(player.recoil, 0, 6, dt);
 
-  if (!player.alive) { slump(player.mesh, dt); return; }
+  if (!player.alive) {
+    if (player.rag && !player.ragAsleep) {
+      if (!stepRagdoll(player.rag, dt) && player.dead > 2.5) player.ragAsleep = true;
+      poseRagdoll(player.rag);
+    }
+    player.dead += dt;
+    return;
+  }
 
   // stick is camera-relative
   const len = Math.hypot(inputMove.x, inputMove.y);
@@ -3538,6 +4051,7 @@ function finishJob(won) {
     // work unlocks hardware
     if (game.jobs === 1) { inv[1].owned = true; toast('MICRO SMG UNLOCKED', 'cash'); }
     if (game.jobs === 3) { inv[2].owned = true; toast('PUMP 12G UNLOCKED', 'cash'); }
+    if (game.jobs === 6) { inv[3].owned = true; toast('RPG-7 UNLOCKED', 'cash'); }
     for (const iv of inv) if (iv.owned) iv.res = Math.min(iv.res + 60, WEAPONS[inv.indexOf(iv)].maxRes);
     player.armor = Math.min(100, player.armor + 35);
     hudWeapon(); hudHealth();
@@ -3738,12 +4252,13 @@ function updateShops(dt) {
   } else if (s.kind === 'ammo') {
     let wanted2 = false;
     for (let i = 0; i < inv.length; i++) if (inv[i].owned && inv[i].res < WEAPONS[i].maxRes) wanted2 = true;
-    if (!inv[1].owned || !inv[2].owned) wanted2 = true;
+    if (!inv[1].owned || !inv[2].owned || !inv[3].owned) wanted2 = true;
     if (!wanted2) return;
     if (game.cash < def.price) { s.cool = 4; toast('NEED $' + def.price, 'bad'); return; }
     spend(def.price);
     if (!inv[1].owned) { inv[1].owned = true; toast('BOUGHT: MICRO SMG', 'cash'); }
     else if (!inv[2].owned) { inv[2].owned = true; toast('BOUGHT: PUMP 12G', 'cash'); }
+    else if (!inv[3].owned) { inv[3].owned = true; toast('BOUGHT: RPG-7', 'cash'); }
     else toast('AMMO TOPPED UP', 'good');
     for (let i = 0; i < inv.length; i++) if (inv[i].owned) inv[i].res = WEAPONS[i].maxRes;
     hudWeapon();
@@ -4155,7 +4670,7 @@ bindButton('#b-fire', () => { held.fire = true; if (!curWep().auto) shoot(); }, 
 bindButton('#b-aim', () => { setAim(!player.aiming); });
 bindButton('#b-reload', () => reload());
 bindButton('#b-jump', () => { held.jump = true; });
-bindButton('#b-swap', () => swapWeapon());
+bindButton('#b-swap', () => { if (wheelEl.classList.contains('on')) closeWheel(); else openWheel(); });
 bindButton('#b-enter', () => tryEnter());
 bindButton('#b-gas', () => held.gas = true, () => held.gas = false);
 bindButton('#b-brake', () => held.brake = true, () => held.brake = false);
@@ -4168,6 +4683,41 @@ $('#radio').addEventListener('click', e => {
   e.preventDefault(); e.stopPropagation();
   sfx.boot();
   $('#radio').textContent = '♪ ' + sfx.nextStation();
+});
+
+/* ── the weapon menu ─────────────────────────────────────────────────────── */
+const wheelEl = $('#wheel');
+const WEP_ICONS = ['⌐', '⌗', '⌥', '➤'];
+let wheelTimer = 0;
+function buildWheel() {
+  wheelEl.innerHTML = WEAPONS.map((w, i) => {
+    const iv = inv[i];
+    const ammo = iv.owned ? iv.mag + '<span style="opacity:.5">/' + iv.res + '</span>' : 'LOCKED';
+    return '<div class="wcard' + (i === player.wep ? ' sel' : '') + (iv.owned ? '' : ' locked') +
+      '" data-w="' + i + '"><div class="ic">' + (WEP_ICONS[i] || '•') + '</div>' +
+      '<div class="n">' + w.name + '</div><div class="a">' + ammo + '</div></div>';
+  }).join('');
+}
+function openWheel() {
+  if (player.car || !player.alive) return;
+  buildWheel();
+  wheelEl.classList.add('on');
+  wheelTimer = 4.5;
+}
+function closeWheel() { wheelEl.classList.remove('on'); wheelTimer = 0; }
+function pickWeapon(i) {
+  if (i < 0 || i >= WEAPONS.length || !inv[i].owned) { sfx.click(); return; }
+  player.wep = i;
+  player.reloading = 0;
+  sfx.click();
+  hudWeapon();
+  closeWheel();
+}
+wheelEl.addEventListener('pointerdown', e => {
+  const card = e.target.closest && e.target.closest('.wcard');
+  if (!card) return;
+  e.preventDefault(); e.stopPropagation();
+  pickWeapon(+card.dataset.w);
 });
 
 function setAim(on) {
@@ -4188,6 +4738,10 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyF') tryEnter();
   if (e.code === 'KeyR') reload();
   if (e.code === 'KeyQ' || e.code === 'Tab') { e.preventDefault(); swapWeapon(); }
+  if (e.code.startsWith('Digit')) {
+    const n = +e.code.slice(5) - 1;
+    if (n >= 0 && n < WEAPONS.length) pickWeapon(n);
+  }
   if (e.code === 'Space') { held.jump = true; e.preventDefault(); }
   if (e.code === 'Escape') { if (mapOpen) closeMap(); else togglePause(); }
   if (e.code === 'KeyH' && player.car) sfx.horn(player.car.pos, 0.8);
@@ -4422,6 +4976,13 @@ const sfx = (() => {
       noise(node, 0.36, 0.8, 'bandpass', 2400, 0.6);
       noise(node, 0.5, 0.5, 'lowpass', 420);
       tone(node, 220, 60, 0.28, 0.4, 'square');
+    },
+    rocket(pos) {
+      if (!ctx) return;
+      const { node } = place(pos, 1);
+      noise(node, 0.9, 0.8, 'lowpass', 1800, 0.8);           // the whoosh
+      tone(node, 240, 60, 0.5, 0.5, 'sawtooth');
+      tone(node, 90, 40, 0.7, 0.4, 'square');
     },
     boom(pos, p) {
       if (!ctx) return;
@@ -4961,6 +5522,9 @@ function frame(now) {
   if (savePending) { saveTimer -= dt; if (saveTimer <= 0) saveNow(); }
   updateParticles(dt);
   updateTracers(dt);
+  updateRockets(dt);
+  updateBlasts(dt);
+  updateDecals(dt);
   streamWorld(dt);
   updateWorldLook(dt);
   updateCamera(dt);
