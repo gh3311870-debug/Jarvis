@@ -335,6 +335,7 @@ body > canvas{display:block;position:fixed;inset:0;width:100%!important;height:1
     <button id="pResume">Resume</button>
     <button id="pQuality">Quality: High</button>
     <button id="pInvert">Invert Y: Off</button>
+    <button id="pInvertX">Invert X: Off</button>
     <button id="pSens">Sensitivity: 1.0</button>
     <button id="pRestart">Restart</button>
   </div>
@@ -2744,8 +2745,8 @@ function doDash(){
   const dir = _v1.set(0,0,0);
   if(Math.abs(input.x) + Math.abs(input.y) > 0.1){
     dir.set(
-      input.x*Math.cos(camCtl.yaw) + input.y*Math.sin(camCtl.yaw), 0,
-      -input.x*Math.sin(camCtl.yaw) + input.y*Math.cos(camCtl.yaw)
+      -input.x*Math.cos(camCtl.yaw) + input.y*Math.sin(camCtl.yaw), 0,
+       input.x*Math.sin(camCtl.yaw) + input.y*Math.cos(camCtl.yaw)
     ).normalize();
   } else {
     camera.getWorldDirection(dir); dir.y *= 0.35; dir.normalize();
@@ -2784,10 +2785,10 @@ function updatePlayer(dt, t){
     if(P.comboTimer <= 0){ P.combo = 0; }
   }
 
-  // camera-relative movement basis
+  // camera-relative movement basis: forward (sin,cos), screen-right (-cos,sin)
   const cy = Math.cos(camCtl.yaw), sy = Math.sin(camCtl.yaw);
-  const wishX = input.x*cy + input.y*sy;
-  const wishZ = -input.x*sy + input.y*cy;
+  const wishX = -input.x*cy + input.y*sy;
+  const wishZ =  input.x*sy + input.y*cy;
   const wishLen = Math.hypot(wishX, wishZ);
 
   // ---- attack state machine runs across every movement state ----
@@ -3011,13 +3012,13 @@ function clingUpdate(dt, t, wl){
   const P = player, A = P.anim, n = P.wallN;
   if(!n){ P.state='air'; return; }
   // basis on the wall plane
-  const up = _v1.set(0,1,0);
-  const right = _v2.copy(up).cross(n).normalize().multiplyScalar(-1);
+  /* The camera faces -n, so the viewer's right is (-n) x up = (n.z, 0, -n.x).
+     Strafing along that vector means "press right, go right on screen" on all
+     four wall facings. */
+  const right = _v2.set(n.z, 0, -n.x).normalize();
   const crawl = 7.2;
-  // input.y climbs, input.x strafes — relative to the wall, not the camera
-  const camRight = Math.sign(Math.cos(camCtl.yaw)*(-n.z) - Math.sin(camCtl.yaw)*(-n.x)) || 1;
   P.vel.set(0,0,0);
-  P.vel.addScaledVector(right, input.x*crawl*camRight);
+  P.vel.addScaledVector(right, input.x*crawl);
   P.vel.y = input.y*crawl;
   P.pos.addScaledVector(P.vel, dt);
   P.pos.addScaledVector(n, -0.02);      // stay pressed against the surface
@@ -3055,7 +3056,7 @@ function clingUpdate(dt, t, wl){
   if(!clingHeld && input.clingEdge){ endCling(); return; }
 
   // the wall is between the camera and the player unless the view swings around
-  const wantYaw = Math.atan2(n.x, n.z);
+  const wantYaw = Math.atan2(-n.x, -n.z);
   camCtl.yaw += shortAngle(wantYaw - camCtl.yaw) * (1-Math.exp(-1.6*dt));
 
   if(!P.attack) Pose.cling(A, t*(1+wl), wl > 0.05);
@@ -3852,7 +3853,7 @@ function updateObjective(dt){
 const camCtl = {
   yaw: 0, pitch: -0.12,
   dist: 6.2, distTarget: 6.2,
-  height: 1.55,
+  height: 1.55, invertX: false,
   pos: new THREE.Vector3(0, 30, 10),
   look: new THREE.Vector3(),
   dip: 0, roll: 0, fov: 62, fovTarget: 62,
@@ -4088,7 +4089,7 @@ document.addEventListener('pointerlockchange', ()=>{
 addEventListener('mousemove', e=>{
   if(!pointerLocked) return;
   const s = 0.0022 * camCtl.sens;
-  camCtl.yaw   -= e.movementX * s;
+  camCtl.yaw   -= (camCtl.invertX ? -1 : 1) * e.movementX * s;
   camCtl.pitch += (camCtl.invert ? 1 : -1) * e.movementY * s;
 });
 addEventListener('wheel', e=>{
@@ -4139,7 +4140,7 @@ function onTouchMove(e){
       l.moved += Math.abs(dx)+Math.abs(dy);
       l.x = t.clientX; l.y = t.clientY;
       const s = 0.0055 * camCtl.sens;
-      camCtl.yaw   -= dx * s;
+      camCtl.yaw   -= (camCtl.invertX ? -1 : 1) * dx * s;
       camCtl.pitch += (camCtl.invert ? 1 : -1) * dy * s;
     }
   }
@@ -4237,6 +4238,11 @@ $('#pInvert').onclick = e=>{
   camCtl.invert = !camCtl.invert;
   e.target.textContent = 'Invert Y: ' + (camCtl.invert?'On':'Off');
   e.target.classList.toggle('on', camCtl.invert);
+};
+$('#pInvertX').onclick = e=>{
+  camCtl.invertX = !camCtl.invertX;
+  e.target.textContent = 'Invert X: ' + (camCtl.invertX?'On':'Off');
+  e.target.classList.toggle('on', camCtl.invertX);
 };
 $('#pSens').onclick = e=>{
   camCtl.sens = camCtl.sens >= 2.0 ? 0.5 : camCtl.sens + 0.25;
