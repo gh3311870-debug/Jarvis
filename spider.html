@@ -1562,7 +1562,7 @@ function emitWalls(B, x, y, z, w, h, d, bayW, floorH){
 }
 function emitTop(B, x, y, z, w, d, uvScale=0.08){
   const x0=x-w/2, x1=x+w/2, z0=z-d/2, z1=z+d/2;
-  pushQuad(B, x0,y,z0, x1,y,z0, x1,y,z1, x0,y,z1, 0,1,0, 0,0, w*uvScale, d*uvScale);
+  pushQuad(B, x0,y,z1, x1,y,z1, x1,y,z0, x0,y,z0, 0,1,0, 0,0, w*uvScale, d*uvScale);
 }
 /* a closed box (used for parapets, plinths, ledges) */
 function emitBox(B, x,y,z, w,h,d, uvS=0.16){
@@ -1571,7 +1571,7 @@ function emitBox(B, x,y,z, w,h,d, uvS=0.16){
   pushQuad(B, x1,y0,z0, x0,y0,z0, x0,y1,z0, x1,y1,z0, 0,0,-1, 0,0, w*uvS,h*uvS);
   pushQuad(B, x1,y0,z1, x1,y0,z0, x1,y1,z0, x1,y1,z1, 1,0,0,  0,0, d*uvS,h*uvS);
   pushQuad(B, x0,y0,z0, x0,y0,z1, x0,y1,z1, x0,y1,z0, -1,0,0, 0,0, d*uvS,h*uvS);
-  pushQuad(B, x0,y1,z0, x1,y1,z0, x1,y1,z1, x0,y1,z1, 0,1,0,  0,0, w*uvS,d*uvS);
+  pushQuad(B, x0,y1,z1, x1,y1,z1, x1,y1,z0, x0,y1,z0, 0,1,0,  0,0, w*uvS,d*uvS);
 }
 
 /* ---- materials shared by the street layer ------------------------------ */
@@ -1646,8 +1646,8 @@ function buildCity(){
       // lot subdivision
       const lots = [];
       const r = Math.random();
-      if(r < 0.3)      lots.push({x:cxw, z:czw, w:CITY.block, d:CITY.block});
-      else if(r < 0.62){
+      if(r < 0.42)     lots.push({x:cxw, z:czw, w:CITY.block, d:CITY.block});
+      else if(r < 0.80){
         const split = rand(0.38,0.62), vertical = Math.random()<0.5;
         if(vertical){
           lots.push({x:cxw-CITY.block*(1-split)/2, z:czw, w:CITY.block*split-2, d:CITY.block});
@@ -1674,11 +1674,15 @@ function buildCity(){
         const bayW = style.name==='prewar' ? 3.4 : style.name==='brick' ? 3.2 : 3.8;
         const floorH = style.name==='prewar' ? 4.2 : 3.7;
 
-        // height falls off from downtown; a few landmarks punch way up
+        const w = Math.max(14, lot.w - rand(2,6)), d = Math.max(14, lot.d - rand(2,6));
+        // height falls off from downtown
         let h = lerp(rand(58,118), rand(16,40), Math.pow(distC,0.8));
-        if(Math.random() < 0.035) h *= rand(1.7, 2.6);
+        // stay in proportion to the footprint, or the skyline fills with sticks
+        h = Math.min(h, Math.min(w,d) * rand(3.4, 5.2));
+        // a landmark may break that rule, but only on a lot broad enough to
+        // carry the height without turning into a spike
+        if(Math.min(w,d) > 26 && Math.random() < 0.12) h *= rand(1.4, 2.1);
         h = Math.round(h/floorH)*floorH;
-        const w = Math.max(11, lot.w - rand(2,7)), d = Math.max(11, lot.d - rand(2,7));
 
         if(!secBufs[sec][styleIdx]) secBufs[sec][styleIdx] = newBuf();
         const B = secBufs[sec][styleIdx];
@@ -1721,8 +1725,8 @@ function buildCity(){
                                  rot:Math.random()<0.5?0:Math.PI/2, c:randi(0,NEON_COLORS.length-1)});
           }
           cy += segH;
-          const shrink = rand(0.68, 0.86);
-          cw = Math.max(9, cw*shrink); cd = Math.max(9, cd*shrink);
+          const shrink = rand(0.80, 0.92);
+          cw = Math.max(12, cw*shrink); cd = Math.max(12, cd*shrink);
           cx += rand(-1,1); cz += rand(-1,1);
         }
 
@@ -1795,7 +1799,7 @@ function buildCity(){
     const p = (i-0.5)*P;
     // one long strip per street centreline, UVs tiled along its length
     const L = CITY.span/2+P;
-    markBuf.p.push(-L,0.04,p-1.2,  L,0.04,p-1.2,  L,0.04,p+1.2,  -L,0.04,p-1.2,  L,0.04,p+1.2,  -L,0.04,p+1.2);
+    markBuf.p.push(-L,0.04,p+1.2,  L,0.04,p+1.2,  L,0.04,p-1.2,  -L,0.04,p+1.2,  L,0.04,p-1.2,  -L,0.04,p-1.2);
     for(let k=0;k<6;k++) markBuf.n.push(0,1,0);
     const rep = (L*2)/14;
     markBuf.u.push(0,0, rep,0, rep,1, 0,0, rep,1, 0,1);
