@@ -206,7 +206,7 @@ body > canvas{display:block;position:fixed;inset:0;width:100%!important;height:1
 #pause .stat{font-size:13px;letter-spacing:2px;color:var(--muted)}
 #pause .stat b{color:#dbe6ef}
 
-@media (max-width:820px){
+@media (pointer:coarse), (max-width:820px){
   /* the thumb buttons own the bottom of a phone screen, so vitals move up top */
   #vitals{left:18px;top:92px;bottom:auto;width:150px}
   #vitals .lbl{font-size:9.5px;letter-spacing:2.5px}
@@ -219,6 +219,60 @@ body > canvas{display:block;position:fixed;inset:0;width:100%!important;height:1
   #combo .n{font-size:46px}
   #speed{bottom:auto;top:96px}
   #abil{display:none}
+  /* the keyboard legend is dead weight on a touch device */
+  #menu .keys{display:none}
+  #menu .blurb{font-size:14px;margin-top:16px}
+}
+
+/* ---- landscape phone: short and wide ----------------------------------- *
+ * Held sideways a phone gives about 390px of height, so the HUD compacts
+ * upward, the buttons shrink, and the middle of the screen stays clear for
+ * the two thumbs and the view between them.                               */
+@media (pointer:coarse) and (max-height:560px){
+  #obj{left:14px;top:8px;font-size:10px;line-height:1.5}
+  #obj b{font-size:14px}
+  #vitals{left:14px;top:66px;width:126px}
+  #vitals .lbl{font-size:8.5px;letter-spacing:2px}
+  #vitals .bar{height:4px;margin:3px 0 7px}
+  #score{right:60px;top:8px}
+  #score .v{font-size:18px}
+  #score .l{font-size:9px;letter-spacing:2.5px}
+  #combo{right:92px;top:34%}
+  #combo .n{font-size:34px}
+  #combo .rank{font-size:11px;letter-spacing:3px}
+  #combo .tmr{width:82px}
+  #speed{top:auto;bottom:8px}
+  #speed .v{font-size:17px}
+  #speed .l{font-size:8.5px;letter-spacing:3px}
+  #speed .alt{font-size:10px}
+  #retic{transform:scale(.8)}
+
+  .tb{font-size:9.5px;letter-spacing:1.2px}
+  .tb .ico{font-size:16px;margin-bottom:1px}
+  #t-web{right:16px;bottom:84px;width:76px;height:76px;font-size:10.5px}
+  #t-punch{right:98px;bottom:18px;width:70px;height:70px}
+  #t-jump{right:20px;bottom:14px;width:60px;height:60px}
+  #t-zip{right:96px;bottom:96px;width:54px;height:54px}
+  #t-dash{right:16px;bottom:166px;width:54px;height:54px}
+  /* secondary abilities sit mid-height on the left, clear of where the
+     stick thumb rests in the bottom corner */
+  #t-focus{left:14px;bottom:92px;width:52px;height:52px}
+  #t-crawl{left:14px;bottom:150px;width:52px;height:52px}
+  #t-pause{top:8px;right:10px;width:36px;height:36px;font-size:13px}
+  #stick{width:112px;height:112px;margin:-56px 0 0 -56px}
+  #stick .nub{width:46px;height:46px;margin:-23px 0 0 -23px}
+
+  #menu{padding:12px}
+  #menu h1{font-size:clamp(30px,8vh,52px);letter-spacing:10px;margin-left:10px}
+  #menu .sub{font-size:10px;letter-spacing:5px}
+  #menu .blurb{font-size:12px;line-height:1.55;margin-top:10px;max-width:520px}
+  #play{margin-top:14px;padding:11px 34px;font-size:13px;letter-spacing:4px}
+  #menu .tip{margin-top:10px;font-size:10px}
+  #pause h2{font-size:22px;letter-spacing:7px}
+  #pause button{padding:9px 16px;font-size:11.5px;letter-spacing:2px}
+  #pause .stat{font-size:11px}
+  #banner .t{font-size:26px;letter-spacing:5px}
+  #banner .s{font-size:11px}
 }
 </style>
 </head>
@@ -4201,12 +4255,21 @@ $('#pQuality').onclick = e=>{
 };
 
 /* ---- resize ------------------------------------------------------------- */
+function updateTip(){
+  if(!isTouch) return;
+  $('#tip').textContent = innerHeight > innerWidth
+    ? 'Turn your phone sideways — the game plays best in landscape'
+    : 'Left thumb steers · right thumb looks · tap right to strike';
+}
+addEventListener('orientationchange', ()=>setTimeout(updateTip, 250));
+
 function onResize(){
   const w = innerWidth, h = innerHeight;
   camera.aspect = w/h; camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
   allocTargets();
   parts.points.material.uniforms.uScale.value = h*0.5;
+  updateTip();
 }
 addEventListener('resize', ()=>{ clearTimeout(window._rz); window._rz = setTimeout(onResize, 120); });
 
@@ -4264,7 +4327,7 @@ async function boot(){
   }, 1.0);
   $('#loading').classList.add('hide');
   setTimeout(()=>$('#loading').style.display='none', 600);
-  if(isTouch) $('#tip').textContent = 'Left thumb steers · right thumb looks · tap right to strike';
+  updateTip();
 }
 
 $('#play').onclick = ()=>{
