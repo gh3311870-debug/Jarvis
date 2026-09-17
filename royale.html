@@ -4468,9 +4468,13 @@ function actorFire(a){
     return;
   }
 
-  const spreadBase = a.ads ? W.adsSpread : W.spread;
-  // moving barely widens the cone: on a touch stick you are almost always moving
-  const moveFactor = (a.vel.lengthSq() > 1 ? 1.2 : 1) * (a.crouch ? 0.68 : 1) * (a.grounded?1:1.45);
+  const isPlayer = (a === Player);
+  // Touch aiming gets the tight cone; bots keep the wider one they were balanced
+  // around, or they become far deadlier than intended.
+  const spreadBase = (a.ads ? W.adsSpread : W.spread) * (isPlayer ? 1 : BOT_SPREAD_MULT);
+  const moveFactor = isPlayer
+    ? (a.vel.lengthSq() > 1 ? 1.2 : 1) * (a.crouch ? 0.68 : 1) * (a.grounded ? 1 : 1.45)
+    : (a.vel.lengthSq() > 1 ? 1.5 : 1) * (a.crouch ? 0.70 : 1) * (a.grounded ? 1 : 1.80);
   const bloom = (a.bloom||0);
   const spread = (spreadBase + bloom) * moveFactor * DEG;
 
@@ -4506,7 +4510,7 @@ function actorFire(a){
   spawnMuzzleFlash(muzzle, _fireDir);
   Audio2.SFX.shot(W, a===Player?0:a.pos.distanceTo(Player.pos));
   applyRecoil(a, W);
-  a.bloom = Math.min(W.bloom*2.1, (a.bloom||0) + W.bloom*0.8);
+  a.bloom = Math.min(W.bloom*(isPlayer?2.1:3.2), (a.bloom||0) + W.bloom*(isPlayer?0.8:1));
   if(a === Player){ rebuildInvBar(); haptic(W.cls==='shotgun'?24:9); }
   if(item.ammo <= 0 && ammoFor(a,item) > 0) startReload(a);
 }
@@ -4644,6 +4648,9 @@ function destroyHarvestable(h){
    nearest target in a small cone, and a bounded bend applied to the shot
    itself. Both are off at the lowest setting.
    ========================================================================== */
+// Bots fire through a wider cone than the player so the tighter player-facing
+// spreads do not also turn every opponent into a marksman.
+const BOT_SPREAD_MULT = 2.2;
 const AIM_CONE   = [0, 5.5, 9, 13];    // degrees, by assist level
 const AIM_PULL   = [0, 1.5, 2.8, 4.2]; // how hard the camera is drawn in
 const AIM_BEND   = [0, 2.0, 4.0, 6.5]; // degrees a shot may be corrected
@@ -5327,8 +5334,13 @@ function startBusRun(){
   Bus.mesh.visible = true;
   Audio2.SFX.bus();
   // assign bot jump times
+  // Seats are assigned once here. Rolling them per frame made everyone jitter
+  // through the bodywork every tick.
+  const seatRow = (i)=>({ x:((i%3)-1)*1.25, z:(Math.floor(i/3)%8 - 3.5)*1.5 });
+  let seatIdx = 1;
   for(const a of Actors){
     if(a === Player) continue;
+    a.seat = seatRow(seatIdx++);
     a.state = 'bus';
     a.jumpT = rand(0.82, 0.06);
     const poi = Math.random() < 0.72 ? pick(World.pois.filter(p=>!p.small)) : null;
@@ -5338,8 +5350,10 @@ function startBusRun(){
       a.dropTarget = new THREE.Vector3(Math.cos(da)*dd, 0, Math.sin(da)*dd);
     }
   }
+  Player.seat = { x:0, z:0 };
   Player.state = 'bus';
   GS.phase = 'bus';
+  Cam.pitch = -0.62;      // start looking down at the island to pick a drop
 }
 function updateBus(dt){
   if(!Bus.active) return;
@@ -5349,12 +5363,19 @@ function updateBus(dt){
   Bus.mesh.position.copy(Bus.pos);
   Bus.mesh.position.y = CFG.busAlt + Math.sin(GS.t*0.8)*1.6;
   Bus.mesh.rotation.z = Math.sin(GS.t*0.6)*0.03;
-  // riders
+  // Riders stand on the bus floor. The shell spans -2..+2 locally and the
+  // chassis tops out at -1.9, so feet sit just above that.
+  const bp = Bus.mesh.position;
+  const FLOOR_Y = -1.86;
   for(const a of Actors){
     if(a.state !== 'bus') continue;
-    a.pos.set(Bus.mesh.position.x + (a===Player?0:rand(2,-2)),
-              Bus.mesh.position.y - 4.4,
-              Bus.mesh.position.z + rand(0.4,-0.4));
+    const seat = a.seat || { x:0, z:0 };
+    a.pos.set(bp.x + seat.x, bp.y + FLOOR_Y, bp.z + seat.z);
+    a.yaw = Math.atan2(Bus.dir.x, Bus.dir.z);
+    if(a.model){
+      a.model.position.copy(a.pos);
+      a.model.rotation.set(0, a.yaw, 0);
+    }
     if(a !== Player && Bus.t >= a.jumpT) actorJumpFromBus(a);
   }
   if(Player.state === 'bus' && Bus.t > 1.0) actorJumpFromBus(Player);
@@ -5427,6 +5448,8 @@ function updateSkydive(a, dt){
     if(a.gliderMesh) a.gliderMesh.visible = false;
     if(a === Player){
       GS.phase = 'ground';
+      // brief grace so you are not shot before you can even look around
+      a.landGraceUntil = GS.t + 3.0;
       Audio2.SFX.land(false);
       pushBanner('', '');
       hideBanner();
@@ -5789,6 +5812,28 @@ function updateCamera(dt){
   if(sky) sky.position.copy(camera.position);
 }
 
+// While riding, orbit outside the bus so the island below is visible and the
+// player can pick a drop. Inside the shell there would be nothing to see.
+function updateBusCamera(){
+  if(!Bus.mesh) return;
+  const bp = Bus.mesh.position;
+  const d = 13;
+  const pitch = clamp(Cam.pitch, -1.15, 0.15);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  camera.position.set(
+    bp.x - Math.sin(Cam.yaw)*cp*d,
+    bp.y - sp*d + 2.5,
+    bp.z - Math.cos(Cam.yaw)*cp*d);
+  // look past the bus toward the ground it is flying over
+  camera.lookAt(bp.x + Math.sin(Cam.yaw)*18, bp.y - 16, bp.z + Math.cos(Cam.yaw)*18);
+  if(sky) sky.position.copy(camera.position);
+  if(sun){
+    sun.position.set(bp.x+150, bp.y+230, bp.z+110);
+    sun.target.position.set(bp.x, bp.y, bp.z);
+    sun.target.updateMatrixWorld();
+  }
+}
+
 function updateSpectateCamera(dt){
   // slow orbit above the death location
   Cam.specT = (Cam.specT||0) + dt*0.3;
@@ -5952,6 +5997,7 @@ function botFindTarget(a){
   for(const o of Actors){
     if(o === a || o.dead) continue;
     if(o.state === 'bus' || o.state === 'skydive') continue;
+    if(o.landGraceUntil && GS.t < o.landGraceUntil) continue;
     const d = Math.hypot(o.pos.x-a.pos.x, o.pos.z-a.pos.z);
     if(d > 150) continue;
     if(d < bestD && botCanSee(a, o)){ best = o; bestD = d; }
@@ -7191,6 +7237,7 @@ function loop(){
 
   // --- camera ---
   if(GS.phase === 'dead' || GS.phase === 'victory') updateSpectateCamera(dt);
+  else if(Player && Player.state === 'bus') updateBusCamera();
   else if(Player) updateCamera(dt);
 
   // --- HUD ---
