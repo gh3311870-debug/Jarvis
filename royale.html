@@ -458,7 +458,9 @@ button{font-family:inherit;color:inherit;border:none;background:none;cursor:poin
 #reticle .r{position:absolute;background:rgba(255,255,255,.9);box-shadow:0 0 2px #000}
 #reticle .rv{width:2px;height:7px;left:16px}
 #reticle .rh{height:2px;width:7px;top:16px}
-#reticle.hit .r{background:var(--red)}
+#reticle.hit .r{background:var(--red);box-shadow:0 0 6px rgba(255,71,87,.9)}
+#reticle.hit{transform:scale(.82)}
+#reticle{transition:transform .12s ease}
 #hitmark{left:50%;top:48%;width:26px;height:26px;margin:-13px 0 0 -13px;opacity:0}
 #hitmark span{position:absolute;width:9px;height:2px;background:#fff;box-shadow:0 0 3px #000}
 #hitmark.kill span{background:var(--red)}
@@ -941,11 +943,13 @@ button{font-family:inherit;color:inherit;border:none;background:none;cursor:poin
       <input type="range" id="setFov" min="60" max="100" value="78"><div class="val" id="setFovV">78</div></div>
     <div class="set-row"><label>Graphics Quality<em>Lower = smoother</em></label>
       <input type="range" id="setQual" min="0" max="3" value="2"><div class="val" id="setQualV">HI</div></div>
+    <div class="set-row"><label>Aim Assist<em>Helps the reticle stick to targets</em></label>
+      <input type="range" id="setAim" min="0" max="3" value="2"><div class="val" id="setAimV">MED</div></div>
     <div class="set-row"><label>Music</label><div class="toggle on" id="setMusic"><i></i></div></div>
     <div class="set-row"><label>Sound Effects</label><div class="toggle on" id="setSfx"><i></i></div></div>
     <div class="set-row"><label>Haptics<em>Vibration feedback</em></label><div class="toggle on" id="setHaptic"><i></i></div></div>
     <div class="set-row"><label>Auto-Pickup<em>Walk over loot to grab</em></label><div class="toggle on" id="setAutoPick"><i></i></div></div>
-    <div class="set-row"><label>Auto-Fire<em>Shoot when reticle is on target</em></label><div class="toggle" id="setAutoFire"><i></i></div></div>
+    <div class="set-row"><label>Auto-Fire<em>Shoot when the reticle is on a target</em></label><div class="toggle on" id="setAutoFire"><i></i></div></div>
     <div class="set-row"><label>Turbo Build<em>Hold to place repeatedly</em></label><div class="toggle on" id="setTurbo"><i></i></div></div>
     <div class="set-row"><label>Show FPS</label><div class="toggle" id="setFps"><i></i></div></div>
     <div class="set-row"><label>Reset Progress<em>Wipes levels, V-Bucks, unlocks</em></label>
@@ -1040,7 +1044,7 @@ const GS = {                 // runtime game state
 
 const Q = { level:2, shadows:true, pixelRatio:1.5, drawDist:420, botDetail:true, fx:true };
 let RENDER_CHAR_DIST = 115;   // beyond this an enemy is simulated but not drawn
-let MAX_RENDERED_CHARS = 14;  // hard cap for crowded POIs
+let MAX_RENDERED_CHARS = 11;  // hard cap for crowded POIs
 
 /* ============================================================================
    2. PERSISTENT PROFILE
@@ -1059,7 +1063,7 @@ const DEFAULT_PROFILE = {
   trail: 'none',
   owned: { skins:['recruit','scout'], pickaxes:['default'], gliders:['default'], trails:['none'] },
   stats: { matches:0, wins:0, kills:0, deaths:0, damage:0, top10:0, bestKills:0, timePlayed:0, structures:0, harvested:0 },
-  settings: { sens:100, adsSens:60, fov:78, qual:2, music:true, sfx:true, haptic:true, autoPick:true, autoFire:false, turbo:true, fps:false },
+  settings: { sens:100, adsSens:60, fov:78, qual:2, aimAssist:2, music:true, sfx:true, haptic:true, autoPick:true, autoFire:true, turbo:true, fps:false },
   shopSeed: 0,
 };
 let P = loadProfile();
@@ -1273,13 +1277,13 @@ const RARITY_ORDER = ['common','uncommon','rare','epic','legendary','mythic'];
 
 // Weapon archetypes. dmg is base (common); rarity multiplies.
 const WEAPONS = {
-  pistol:   { id:'pistol',   name:'Pistol',            cls:'pistol', dmg:24, rpm:400, mag:16, reload:1.35, spread:1.5, adsSpread:.45, range:90,  falloff:.55, pellets:1, headMult:1.75, auto:false, sndPitch:1.25, recoil:1.0,  bloom:.9,  aimTime:.22, moveMult:1.0 },
-  ar:       { id:'ar',       name:'Assault Rifle',     cls:'ar',     dmg:31, rpm:540, mag:30, reload:2.25, spread:2.3, adsSpread:.38, range:160, falloff:.72, pellets:1, headMult:1.85, auto:true,  sndPitch:1.0,  recoil:1.25, bloom:1.35,aimTime:.28, moveMult:.95 },
-  smg:      { id:'smg',      name:'SMG',               cls:'smg',    dmg:18, rpm:800, mag:35, reload:2.05, spread:3.1, adsSpread:.85, range:70,  falloff:.5,  pellets:1, headMult:1.55, auto:true,  sndPitch:1.35, recoil:.85,  bloom:1.8, aimTime:.2,  moveMult:1.02 },
-  shotgun:  { id:'shotgun',  name:'Pump Shotgun',      cls:'shotgun',dmg:11, rpm:72,  mag:5,  reload:2.9,  spread:5.6, adsSpread:3.6, range:34,  falloff:.32, pellets:9, headMult:1.9,  auto:false, sndPitch:.72, recoil:2.6,  bloom:0,   aimTime:.3,  moveMult:.98, pumpDelay:.62 },
-  tac:      { id:'tac',      name:'Tactical Shotgun',  cls:'shotgun',dmg:7,  rpm:150, mag:8,  reload:2.5,  spread:6.4, adsSpread:4.4, range:30,  falloff:.3,  pellets:10,headMult:1.75, auto:false, sndPitch:.85, recoil:1.7,  bloom:0,   aimTime:.26, moveMult:1.0 },
-  sniper:   { id:'sniper',   name:'Bolt-Action Sniper',cls:'sniper', dmg:105,rpm:36,  mag:1,  reload:2.7,  spread:6.0, adsSpread:0.0, range:400, falloff:.95, pellets:1, headMult:2.5,  auto:false, sndPitch:.62, recoil:3.4,  bloom:0,   aimTime:.52, moveMult:.85, scope:3.4, pumpDelay:1.35 },
-  dmr:      { id:'dmr',      name:'Marksman Rifle',    cls:'sniper', dmg:52, rpm:130, mag:10, reload:2.4,  spread:3.0, adsSpread:.1,  range:260, falloff:.88, pellets:1, headMult:2.1,  auto:false, sndPitch:.8,  recoil:1.9,  bloom:.4,  aimTime:.38, moveMult:.9,  scope:2.2 },
+  pistol:   { id:'pistol',   name:'Pistol',            cls:'pistol', dmg:24, rpm:400, mag:16, reload:1.35, spread:0.9, adsSpread:.45, range:90,  falloff:.55, pellets:1, headMult:1.75, auto:false, sndPitch:1.25, recoil:1.0,  bloom:.9,  aimTime:.22, moveMult:1.0 },
+  ar:       { id:'ar',       name:'Assault Rifle',     cls:'ar',     dmg:31, rpm:540, mag:30, reload:2.25, spread:1.15, adsSpread:.38, range:160, falloff:.72, pellets:1, headMult:1.85, auto:true,  sndPitch:1.0,  recoil:1.25, bloom:1.35,aimTime:.28, moveMult:.95 },
+  smg:      { id:'smg',      name:'SMG',               cls:'smg',    dmg:18, rpm:800, mag:35, reload:2.05, spread:1.9, adsSpread:.85, range:70,  falloff:.5,  pellets:1, headMult:1.55, auto:true,  sndPitch:1.35, recoil:.85,  bloom:1.8, aimTime:.2,  moveMult:1.02 },
+  shotgun:  { id:'shotgun',  name:'Pump Shotgun',      cls:'shotgun',dmg:11, rpm:72,  mag:5,  reload:2.9,  spread:4.6, adsSpread:3.6, range:34,  falloff:.32, pellets:9, headMult:1.9,  auto:false, sndPitch:.72, recoil:2.6,  bloom:0,   aimTime:.3,  moveMult:.98, pumpDelay:.62 },
+  tac:      { id:'tac',      name:'Tactical Shotgun',  cls:'shotgun',dmg:7,  rpm:150, mag:8,  reload:2.5,  spread:5.2, adsSpread:4.4, range:30,  falloff:.3,  pellets:10,headMult:1.75, auto:false, sndPitch:.85, recoil:1.7,  bloom:0,   aimTime:.26, moveMult:1.0 },
+  sniper:   { id:'sniper',   name:'Bolt-Action Sniper',cls:'sniper', dmg:105,rpm:36,  mag:1,  reload:2.7,  spread:3.0, adsSpread:0.0, range:400, falloff:.95, pellets:1, headMult:2.5,  auto:false, sndPitch:.62, recoil:3.4,  bloom:0,   aimTime:.52, moveMult:.85, scope:3.4, pumpDelay:1.35 },
+  dmr:      { id:'dmr',      name:'Marksman Rifle',    cls:'sniper', dmg:52, rpm:130, mag:10, reload:2.4,  spread:1.6, adsSpread:.1,  range:260, falloff:.88, pellets:1, headMult:2.1,  auto:false, sndPitch:.8,  recoil:1.9,  bloom:.4,  aimTime:.38, moveMult:.9,  scope:2.2 },
   rocket:   { id:'rocket',   name:'Rocket Launcher',   cls:'heavy',  dmg:92, rpm:48,  mag:1,  reload:3.1,  spread:1.2, adsSpread:.4,  range:300, falloff:1,   pellets:1, headMult:1,    auto:false, sndPitch:.55, recoil:3.0,  bloom:0,   aimTime:.4,  moveMult:.82, projectile:'rocket', splash:5.2, splashDmg:78, structDmg:340 },
   grenade:  { id:'grenade',  name:'Frag Grenade',      cls:'throw',  dmg:0,  rpm:75,  mag:3,  reload:0,    spread:0,   adsSpread:0,   range:40,  falloff:1,   pellets:0, headMult:1,    auto:false, sndPitch:1,   recoil:0,    bloom:0,   aimTime:.2,  moveMult:1, projectile:'grenade', splash:4.6, splashDmg:96, structDmg:280, stack:6 },
 };
@@ -1477,7 +1481,7 @@ function applyQuality(level){
   Q.botDetail  = level >= 1;
   Q.fx         = level >= 1;
   RENDER_CHAR_DIST = [70, 90, 115, 150][level];
-  MAX_RENDERED_CHARS = [6, 9, 14, 20][level];
+  MAX_RENDERED_CHARS = [5, 8, 11, 15][level];
   if(renderer){
     renderer.shadowMap.enabled = Q.shadows;
     if(sun) sun.castShadow = Q.shadows;
@@ -1490,6 +1494,22 @@ function applyQuality(level){
 /* ============================================================================
    6. CHARACTER MODEL FACTORY — blocky stylized figures
    ========================================================================== */
+// Rounded, tapered body parts. Limbs are low-segment cones rather than slabs,
+// which reads as a figure instead of a stack of bricks at almost the same cost.
+function limbGeo(rTop, rBot, h, seg){
+  const k = `L${rTop}_${rBot}_${h}_${seg||6}`;
+  if(!GEO[k]){
+    const g = new THREE.CylinderGeometry(rTop, rBot, h, seg||6, 1);
+    GEO[k] = g;
+  }
+  return GEO[k];
+}
+function blobGeo(r, seg){
+  const k = `B${r}_${seg||8}`;
+  if(!GEO[k]) GEO[k] = new THREE.SphereGeometry(r, seg||8, (seg||8)-2);
+  return GEO[k];
+}
+
 function buildCharacter(skinId, opts){
   opts = opts||{};
   const S = SKINS[skinId] || SKINS.recruit;
@@ -1498,72 +1518,81 @@ function buildCharacter(skinId, opts){
   const accentMat = matLambert(S.accent);
   const headMat   = matLambert(S.head);
   const darkMat   = matLambert(0x1a2030);
+  const bootMat   = matLambert(0x232a38);
 
   const cast = opts.shadow !== false && Q.shadows;
+  const add = (geo, mat, x,y,z, sx,sy,sz)=>{
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x,y,z);
+    if(sx!=null) m.scale.set(sx, sy==null?sx:sy, sz==null?sx:sz);
+    m.castShadow = cast;
+    return m;
+  };
 
-  // --- torso ---
-  const torso = new THREE.Mesh(boxGeo(0.62, 0.72, 0.36), bodyMat);
-  torso.position.y = 1.16; torso.castShadow = cast;
+  // --- torso: a shallow taper from chest to waist, not a cone ---
+  const torso = add(limbGeo(0.168, 0.143, 0.50, 10), bodyMat, 0, 1.21, 0, 1.40, 1, 0.80);
   g.add(torso);
-  // chest plate accent
-  const plate = new THREE.Mesh(boxGeo(0.3, 0.46, 0.38), accentMat);
-  plate.position.set(0, 1.2, 0.015); plate.castShadow = cast;
+  // chest panel: a vest hugging the torso, not a panel floating off the front
+  const plate = add(limbGeo(0.163, 0.150, 0.26, 10), accentMat, 0, 1.30, 0.004, 1.37, 1, 0.79);
   g.add(plate);
-  // shoulder pads break up the torso silhouette
+  // hips bridge the torso to the legs so the body does not float
+  g.add(add(limbGeo(0.145, 0.132, 0.16, 10), bodyMat, 0, 0.94, 0, 1.36, 1, 0.84));
+  const belt = add(limbGeo(0.150, 0.147, 0.07, 10), darkMat, 0, 1.00, 0, 1.38, 1, 0.86);
+  g.add(belt);
+  // shoulders: rounded caps sitting just outside the chest
   for(const sx of [-1,1]){
-    const pad = new THREE.Mesh(boxGeo(0.16, 0.14, 0.34), accentMat);
-    pad.position.set(sx*0.33, 1.46, 0); pad.castShadow = cast; g.add(pad);
+    g.add(add(blobGeo(0.082, 7), accentMat, sx*0.225, 1.415, 0, 1.1, 0.92, 1.0));
   }
-  // belt
-  const belt = new THREE.Mesh(boxGeo(0.64, 0.1, 0.38), darkMat);
-  belt.position.y = 0.83; g.add(belt);
+  // neck
+  g.add(add(limbGeo(0.052, 0.066, 0.10, 6), headMat, 0, 1.46, 0));
 
-  // --- head group (yaw independently for look) ---
+  // --- head group (yaws independently for look) ---
   const headG = new THREE.Group();
   headG.position.y = 1.56;
-  const head = new THREE.Mesh(boxGeo(0.34, 0.34, 0.32), headMat);
-  head.castShadow = cast; headG.add(head);
-  // eyes
+  const head = add(blobGeo(0.138, 9), headMat, 0, 0.04, 0, 1.0, 1.10, 0.97);
+  headG.add(head);
+  // hair mass only where no headgear covers it
+  if(S.hat === 'none') headG.add(add(blobGeo(0.132, 8), darkMat, 0, 0.075, -0.026, 1.03, 0.70, 0.98));
   const eyeMat = matBasic(0x121820);
-  const eyeL = new THREE.Mesh(boxGeo(0.065,0.05,0.02), eyeMat); eyeL.position.set(-0.08,0.03,0.165); headG.add(eyeL);
-  const eyeR = new THREE.Mesh(boxGeo(0.065,0.05,0.02), eyeMat); eyeR.position.set( 0.08,0.03,0.165); headG.add(eyeR);
+  const eyeL = add(blobGeo(0.026, 6), eyeMat, -0.058, 0.032, 0.122, 1, 0.85, 0.5); headG.add(eyeL);
+  const eyeR = add(blobGeo(0.026, 6), eyeMat,  0.058, 0.032, 0.122, 1, 0.85, 0.5); headG.add(eyeR);
+
   // headgear
   if(S.hat === 'cap'){
-    const c = new THREE.Mesh(boxGeo(0.36,0.11,0.34), accentMat); c.position.y=0.2; c.castShadow=cast; headG.add(c);
-    const brim = new THREE.Mesh(boxGeo(0.34,0.04,0.16), accentMat); brim.position.set(0,0.17,0.24); headG.add(brim);
+    headG.add(add(blobGeo(0.152, 8), accentMat, 0, 0.075, 0, 1, 0.72, 1));
+    headG.add(add(boxGeo(0.26,0.032,0.15), accentMat, 0, 0.055, 0.17));
   } else if(S.hat === 'hood'){
-    const h = new THREE.Mesh(boxGeo(0.42,0.4,0.4), bodyMat); h.position.set(0,0.06,-0.03); h.castShadow=cast; headG.add(h);
-    const fmask = new THREE.Mesh(boxGeo(0.3,0.16,0.02), matBasic(S.accent)); fmask.position.set(0,0.02,0.175); headG.add(fmask);
+    headG.add(add(blobGeo(0.185, 8), bodyMat, 0, 0.03, -0.022, 1, 1.02, 1.05));
+    headG.add(add(blobGeo(0.12, 7), matBasic(S.accent), 0, 0.02, 0.10, 1.05, 0.72, 0.45));
   } else if(S.hat === 'visor'){
-    const v = new THREE.Mesh(boxGeo(0.37,0.12,0.05), matBasic(S.accent)); v.position.set(0,0.04,0.16); headG.add(v);
-    const t = new THREE.Mesh(boxGeo(0.36,0.1,0.33), bodyMat); t.position.y=0.2; t.castShadow=cast; headG.add(t);
+    headG.add(add(blobGeo(0.152, 8), bodyMat, 0, 0.075, 0, 1, 0.78, 1));
+    headG.add(add(blobGeo(0.138, 8), matBasic(S.accent), 0, 0.03, 0.045, 1.02, 0.42, 1.02));
   } else if(S.hat === 'helm'){
-    const h = new THREE.Mesh(boxGeo(0.4,0.36,0.38), accentMat); h.position.y=0.05; h.castShadow=cast; headG.add(h);
-    const slit = new THREE.Mesh(boxGeo(0.3,0.06,0.03), matBasic(0x0b0f18)); slit.position.set(0,0.02,0.19); headG.add(slit);
-    const crest = new THREE.Mesh(boxGeo(0.06,0.14,0.3), bodyMat); crest.position.y=0.28; headG.add(crest);
+    headG.add(add(blobGeo(0.165, 9), accentMat, 0, 0.04, 0, 1, 1.02, 1.02));
+    headG.add(add(boxGeo(0.2,0.045,0.03), matBasic(0x0b0f18), 0, 0.02, 0.152));
+    headG.add(add(limbGeo(0.012, 0.03, 0.16, 5), bodyMat, 0, 0.24, -0.02));
   } else if(S.hat === 'crown'){
-    const c = new THREE.Mesh(cylGeo(0.2,0.2,0.1,6), matLambert(S.accent)); c.position.y=0.22; c.castShadow=cast; headG.add(c);
+    headG.add(add(limbGeo(0.152, 0.152, 0.07, 8), matLambert(S.accent), 0, 0.20, 0));
     for(let i=0;i<5;i++){
-      const s = new THREE.Mesh(boxGeo(0.05,0.11,0.05), matLambert(S.accent));
-      const a = i/5*TAU; s.position.set(Math.cos(a)*0.16, 0.31, Math.sin(a)*0.16); headG.add(s);
+      const a = i/5*TAU;
+      headG.add(add(limbGeo(0.006, 0.025, 0.09, 5), matLambert(S.accent),
+                    Math.cos(a)*0.125, 0.275, Math.sin(a)*0.125));
     }
   } else if(S.hat === 'wrap'){
-    const w = new THREE.Mesh(boxGeo(0.38,0.18,0.36), accentMat); w.position.y=0.14; w.castShadow=cast; headG.add(w);
-    const tail = new THREE.Mesh(boxGeo(0.1,0.3,0.06), accentMat); tail.position.set(0.16,0.0,-0.16); headG.add(tail);
+    headG.add(add(limbGeo(0.158, 0.152, 0.13, 8), accentMat, 0, 0.115, 0));
+    headG.add(add(limbGeo(0.02, 0.045, 0.24, 5), accentMat, 0.12, 0.0, -0.11));
   }
   g.add(headG);
 
   // --- arms ---
   function makeArm(side){
     const a = new THREE.Group();
-    a.position.set(side*0.4, 1.46, 0);
-    const up = new THREE.Mesh(boxGeo(0.17,0.38,0.18), bodyMat);
-    up.position.y = -0.19; up.castShadow = cast; a.add(up);
-    const fore = new THREE.Group(); fore.position.y = -0.38;
-    const f = new THREE.Mesh(boxGeo(0.16,0.36,0.17), accentMat);
-    f.position.y = -0.18; f.castShadow = cast; fore.add(f);
-    const hand = new THREE.Mesh(boxGeo(0.15,0.13,0.16), headMat);
-    hand.position.y = -0.4; fore.add(hand);
+    a.position.set(side*0.238, 1.395, 0);
+    a.add(add(limbGeo(0.058, 0.046, 0.34, 6), bodyMat, 0, -0.17, 0));
+    const fore = new THREE.Group(); fore.position.y = -0.34;
+    fore.add(add(limbGeo(0.047, 0.040, 0.32, 6), accentMat, 0, -0.16, 0));
+    const hand = add(blobGeo(0.052, 6), headMat, 0, -0.345, 0, 1, 1.15, 1.1);
+    fore.add(hand);
     a.add(fore); a.userData.fore = fore; a.userData.hand = hand;
     return a;
   }
@@ -1573,14 +1602,12 @@ function buildCharacter(skinId, opts){
   // --- legs ---
   function makeLeg(side){
     const l = new THREE.Group();
-    l.position.set(side*0.17, 0.83, 0);
-    const up = new THREE.Mesh(boxGeo(0.21,0.42,0.22), bodyMat);
-    up.position.y = -0.21; up.castShadow = cast; l.add(up);
-    const shin = new THREE.Group(); shin.position.y = -0.42;
-    const s = new THREE.Mesh(boxGeo(0.19,0.4,0.2), darkMat);
-    s.position.y = -0.2; s.castShadow = cast; shin.add(s);
-    const foot = new THREE.Mesh(boxGeo(0.21,0.1,0.3), matLambert(0x2a3040));
-    foot.position.set(0,-0.41,0.05); shin.add(foot);
+    l.position.set(side*0.118, 0.90, 0);
+    l.add(add(limbGeo(0.084, 0.066, 0.46, 6), bodyMat, 0, -0.23, 0));
+    const shin = new THREE.Group(); shin.position.y = -0.46;
+    shin.add(add(limbGeo(0.064, 0.05, 0.44, 6), darkMat, 0, -0.22, 0));
+    const foot = add(blobGeo(0.072, 6), bootMat, 0, -0.435, 0.04, 1.06, 0.7, 1.75);
+    shin.add(foot);
     l.add(shin); l.userData.shin = shin;
     return l;
   }
@@ -1588,15 +1615,17 @@ function buildCharacter(skinId, opts){
   g.add(legL); g.add(legR);
 
   // --- backpack ---
-  const pack = new THREE.Mesh(boxGeo(0.4,0.42,0.18), matLambert(0x2b3346));
-  pack.position.set(0,1.2,-0.26); pack.castShadow = cast; g.add(pack);
+  const pack = add(limbGeo(0.118, 0.105, 0.32, 7), matLambert(0x2b3346), 0, 1.24, -0.155, 1.22, 1, 0.6);
+  g.add(pack);
 
   // --- cape ---
   let cape = null;
   if(S.cape){
-    cape = new THREE.Mesh(new THREE.PlaneGeometry(0.62,0.9,1,4), new THREE.MeshLambertMaterial({
+    const capeGeo = new THREE.CylinderGeometry(0.20, 0.27, 0.52, 8, 2, true,
+                                               Math.PI*0.78, Math.PI*0.44);
+    cape = new THREE.Mesh(capeGeo, new THREE.MeshLambertMaterial({
       color:S.accent, side:THREE.DoubleSide }));
-    cape.position.set(0,1.05,-0.33); cape.castShadow = cast;
+    cape.position.set(0,1.14,0.01); cape.rotation.x = -0.07; cape.castShadow = cast;
     g.add(cape);
   }
 
@@ -3984,7 +4013,7 @@ function groundHeightAt(x, z, fromY, r){
   for(const c of list){
     if(c.noFloor) continue;
     if(!aabbOverlapXZ(c, x, z, r*0.72)) continue;
-    if(c.y1 <= fromY + 0.65 && c.y1 > best) best = c.y1;
+    if(c.y1 <= fromY + 0.80 && c.y1 > best) best = c.y1;
   }
   return best;
 }
@@ -4007,7 +4036,7 @@ function resolveHorizontal(a, nx, nz, r, height){
       if(c.y1 <= y0 || c.y0 >= y1) continue;
       if(!(x+r > c.x0 && x-r < c.x1 && z+r > c.z0 && z-r < c.z1)) continue;
       // step-up onto low obstacle
-      if(c.y1 - a.pos.y <= 0.62 && c.y1 > a.pos.y){ a.stepUp = Math.max(a.stepUp||0, c.y1); continue; }
+      if(c.y1 - a.pos.y <= 0.78 && c.y1 > a.pos.y){ a.stepUp = Math.max(a.stepUp||0, c.y1); continue; }
       const penX = (x > (c.x0+c.x1)/2) ? (c.x1 - (x-r)) : ((x+r) - c.x0);
       const penZ = (z > (c.z0+c.z1)/2) ? (c.z1 - (z-r)) : ((z+r) - c.z0);
       if(penX < penZ){ x += (x > (c.x0+c.x1)/2) ? penX : -penX; }
@@ -4145,12 +4174,12 @@ function actorAttachModel(a){
   // held items
   const hand = g.userData.foreR;
   const holder = new THREE.Group();
-  holder.position.set(0, -0.42, 0.06);
+  holder.position.set(0, -0.345, 0.05);
   hand.add(holder);
   a.holder = holder;
   a.heldMesh = null;
   a.pickaxeMesh = buildPickaxeModel(a.pickaxeId);
-  a.pickaxeMesh.scale.setScalar(0.85);
+  a.pickaxeMesh.scale.setScalar(0.74);
   a.pickaxeMesh.rotation.x = -0.35;
   holder.add(a.pickaxeMesh);
   // glider (hidden until used)
@@ -4279,8 +4308,8 @@ function equipCurrent(a){
   } else if(it.kind === 'weapon'){
     a.pickaxeMesh.visible = false;
     const m = buildWeaponModel(it.id, it.rarity);
-    m.scale.setScalar(0.92);
-    m.position.set(0.02,-0.12,0.2);
+    m.scale.setScalar(0.78);
+    m.position.set(0.02,-0.10,0.17);
     m.rotation.set(-0.06,0,0);
     a.holder.add(m); a.heldMesh = m;
   } else {
@@ -4440,12 +4469,15 @@ function actorFire(a){
   }
 
   const spreadBase = a.ads ? W.adsSpread : W.spread;
-  const moveFactor = (a.vel.lengthSq() > 1 ? 1.5 : 1) * (a.crouch ? 0.7 : 1) * (a.grounded?1:1.8);
+  // moving barely widens the cone: on a touch stick you are almost always moving
+  const moveFactor = (a.vel.lengthSq() > 1 ? 1.2 : 1) * (a.crouch ? 0.68 : 1) * (a.grounded?1:1.45);
   const bloom = (a.bloom||0);
   const spread = (spreadBase + bloom) * moveFactor * DEG;
 
+  // the first pellet gets the aim-assist correction; spread still applies
+  const aimed = (a === Player) ? applyAimBend(a, _fireDir.clone()) : _fireDir.clone();
   for(let p=0; p<W.pellets; p++){
-    const dir = _fireDir.clone();
+    const dir = aimed.clone();
     if(spread > 0){
       const ang = rand(TAU), mag = Math.sqrt(Math.random())*spread;
       const up = new THREE.Vector3(0,1,0);
@@ -4474,7 +4506,7 @@ function actorFire(a){
   spawnMuzzleFlash(muzzle, _fireDir);
   Audio2.SFX.shot(W, a===Player?0:a.pos.distanceTo(Player.pos));
   applyRecoil(a, W);
-  a.bloom = Math.min(W.bloom*3.2, (a.bloom||0) + W.bloom);
+  a.bloom = Math.min(W.bloom*2.1, (a.bloom||0) + W.bloom*0.8);
   if(a === Player){ rebuildInvBar(); haptic(W.cls==='shotgun'?24:9); }
   if(item.ammo <= 0 && ammoFor(a,item) > 0) startReload(a);
 }
@@ -4604,6 +4636,121 @@ function destroyHarvestable(h){
     spawnParticles(p.x, p.y+2, p.z, MATERIALS[h.mat].color, 24, 5);
   }
   Audio2.SFX.buildBreak();
+}
+
+/* ============================================================================
+   17b. AIM ASSIST
+   Touch aiming is coarse, so the reticle gets help: a gentle pull toward the
+   nearest target in a small cone, and a bounded bend applied to the shot
+   itself. Both are off at the lowest setting.
+   ========================================================================== */
+const AIM_CONE   = [0, 5.5, 9, 13];    // degrees, by assist level
+const AIM_PULL   = [0, 1.5, 2.8, 4.2]; // how hard the camera is drawn in
+const AIM_BEND   = [0, 2.0, 4.0, 6.5]; // degrees a shot may be corrected
+const Aim = { target:null, scanT:0, onTarget:false, angle:99 };
+
+function aimLevel(){ return clamp(P.settings.aimAssist|0, 0, 3); }
+
+// closest visible enemy to the crosshair, within the assist cone
+function findAimTarget(a){
+  const lvl = aimLevel();
+  if(lvl === 0) return null;
+  const coneCos = Math.cos(AIM_CONE[lvl] * 2.2 * DEG);   // scan wider than we pull
+  const origin = new THREE.Vector3(), dir = new THREE.Vector3();
+  camera.getWorldPosition(origin); camera.getWorldDirection(dir);
+  const W = currentWeapon(a);
+  const maxDist = W ? Math.min(W.range * 1.05, 140) : 45;
+  const cands = [];
+  for(const o of Actors){
+    if(o === a || o.dead) continue;
+    if(o.state === 'bus' || o.state === 'skydive') continue;
+    const dx = o.pos.x - origin.x;
+    const dy = (o.pos.y + CFG.playerH*0.55) - origin.y;
+    const dz = o.pos.z - origin.z;
+    const dist = Math.hypot(dx,dy,dz);
+    if(dist > maxDist || dist < 0.8) continue;
+    const dot = (dx*dir.x + dy*dir.y + dz*dir.z) / dist;
+    if(dot < coneCos) continue;
+    cands.push({ o, dist, ang: Math.acos(clamp(dot,-1,1)) });
+  }
+  if(!cands.length) return null;
+  // nearest to the crosshair wins; distance only breaks near-ties
+  cands.sort((p,q)=> (p.ang + p.dist*0.0015) - (q.ang + q.dist*0.0015));
+  for(let i=0; i<Math.min(3, cands.length); i++){
+    const c = cands[i];
+    const to = new THREE.Vector3(
+      c.o.pos.x - origin.x,
+      (c.o.pos.y + CFG.playerH*0.55) - origin.y,
+      c.o.pos.z - origin.z).normalize();
+    const hit = raycastWorld(origin, to, c.dist - 0.7, { self:a, noActors:true });
+    if(!hit){ Aim.angle = c.ang; return c.o; }
+  }
+  return null;
+}
+
+function updateAimAssist(a, dt){
+  const lvl = aimLevel();
+  if(lvl === 0 || Build.active || a.dead){
+    Aim.target = null; Aim.onTarget = false;
+    setReticleHot(false);
+    return;
+  }
+  Aim.scanT -= dt;
+  if(Aim.scanT <= 0){
+    Aim.scanT = 0.07;
+    Aim.target = findAimTarget(a);
+  }
+  const t = Aim.target;
+  if(!t || t.dead){ Aim.target = null; Aim.onTarget = false; setReticleHot(false); return; }
+
+  const origin = new THREE.Vector3(); camera.getWorldPosition(origin);
+  const dx = t.pos.x - origin.x;
+  const dy = (t.pos.y + CFG.playerH*0.55) - origin.y;
+  const dz = t.pos.z - origin.z;
+  const horiz = Math.hypot(dx,dz);
+  const wantYaw = Math.atan2(dx, dz);
+  const wantPitch = Math.atan2(dy, horiz);
+
+  const dYaw = angDiff(Cam.yaw, wantYaw);
+  const dPitch = wantPitch - Cam.pitch;
+  const off = Math.hypot(dYaw, dPitch);
+  const cone = AIM_CONE[lvl] * DEG;
+  Aim.onTarget = off < cone;
+  setReticleHot(Aim.onTarget);
+  if(off > cone * 1.6) return;
+
+  // strongest when nearly lined up, so it refines aim instead of taking it over
+  const closeness = clamp(1 - off/(cone*1.6), 0, 1);
+  const pull = AIM_PULL[lvl] * closeness * (a.ads ? 1.25 : 1);
+  const k = clamp(pull * dt, 0, 0.5);
+  Cam.yaw += dYaw * k;
+  Cam.pitch = clamp(Cam.pitch + dPitch * k, -1.35, 1.32);
+}
+
+// bend a shot toward the assisted target, never by more than the cap
+function applyAimBend(a, dir){
+  const lvl = aimLevel();
+  const t = Aim.target;
+  if(lvl === 0 || !t || t.dead) return dir;
+  const origin = new THREE.Vector3(); camera.getWorldPosition(origin);
+  const to = new THREE.Vector3(
+    t.pos.x - origin.x,
+    (t.pos.y + CFG.playerH*0.55) - origin.y,
+    t.pos.z - origin.z);
+  const dist = to.length();
+  if(dist < 0.5) return dir;
+  to.divideScalar(dist);
+  const dot = clamp(dir.dot(to), -1, 1);
+  const ang = Math.acos(dot);
+  const maxBend = AIM_BEND[lvl] * DEG;
+  if(ang <= 0.0001) return dir;
+  const t2 = Math.min(1, maxBend / ang);
+  return dir.lerp(to, t2).normalize();
+}
+function setReticleHot(on){
+  const r = $('reticle');
+  if(!r) return;
+  if(on !== Aim._hotShown){ r.classList.toggle('hit', on); Aim._hotShown = on; }
 }
 
 /* ============================================================================
@@ -5318,7 +5465,7 @@ function updatePlayer(dt){
   // ---- timers ----
   if(a.fireCd > 0) a.fireCd -= dt;
   if(a.swapCd > 0) a.swapCd -= dt;
-  a.bloom = Math.max(0, (a.bloom||0) - dt*(a.ads?5.5:3.2));
+  a.bloom = Math.max(0, (a.bloom||0) - dt*(a.ads?7.5:4.6));
   if(a.reloading > 0){
     a.reloading -= dt;
     if(a.reloading <= 0){ a.reloading = 0; finishReload(a); }
@@ -5339,6 +5486,7 @@ function updatePlayer(dt){
   a.recoilYaw = damp(a.recoilYaw, 0, 8, dt);
 
   // ---- aim ----
+  updateAimAssist(a, dt);
   a.yaw = Cam.yaw;
   a.pitch = Cam.pitch;
 
@@ -5354,7 +5502,8 @@ function updatePlayer(dt){
   const mag = Math.min(1, Math.hypot(wx,wz));
   const targetVx = mag > 0.01 ? (wx/Math.hypot(wx,wz))*speed*mag : 0;
   const targetVz = mag > 0.01 ? (wz/Math.hypot(wx,wz))*speed*mag : 0;
-  const accel = a.grounded ? 15 : 4.2;
+  // snappier to start and to stop, so the character answers the stick promptly
+  const accel = a.grounded ? (mag > 0.01 ? 20 : 26) : 5.5;
   a.vel.x = damp(a.vel.x, targetVx, accel, dt);
   a.vel.z = damp(a.vel.z, targetVz, accel, dt);
 
@@ -5389,11 +5538,17 @@ function updatePlayer(dt){
       if(placeStructure(a, Build.target)) Build.cooldown = P.settings.turbo ? 0.11 : 0.3;
       else Build.cooldown = 0.25;
     }
-  } else if(Input.fireHeld){
+  } else {
     const it = currentItem(a);
     const wp = it && it.kind==='weapon' ? WEAPONS[it.id] : null;
-    if(!it) { if(!a.swinging) swingPickaxe(a); }
-    else if(wp && wp.auto) actorFire(a);
+    if(Input.fireHeld){
+      // holding fires every weapon at its own rate, so semi-autos need no tapping
+      if(!it){ if(!a.swinging) swingPickaxe(a); }
+      else actorFire(a);
+    } else if(P.settings.autoFire && wp && Aim.onTarget && !a.using){
+      // auto-fire: shoot when the reticle is sitting on someone
+      actorFire(a);
+    }
   }
 
   // storm-aware music
@@ -5418,7 +5573,7 @@ function moveActorPhysics(a, dt){
   if(a.vel.y < CFG.termVel) a.vel.y = CFG.termVel;
   let ny = a.pos.y + a.vel.y*dt;
   const ground = groundHeightAt(nx, nz, a.pos.y, r);
-  if(a.stepUp > a.pos.y && a.grounded && a.stepUp - a.pos.y < 0.65){
+  if(a.stepUp > a.pos.y && a.grounded && a.stepUp - a.pos.y < 0.80){
     a.pos.y = a.stepUp; ny = a.stepUp;
   }
   if(a.vel.y > 0){
@@ -5702,12 +5857,13 @@ function animateActor(a, dt){
   } else if(armed && item.kind==='weapon'){
     const aimX = -1.42 - a.pitch*0.85 + (a.ads?-0.06:0) - a.recoil*0.4;
     ud.armR.rotation.x = damp(ud.armR.rotation.x, aimX, 14, dt);
-    ud.armR.rotation.z = damp(ud.armR.rotation.z, -0.16, 14, dt);
-    ud.armR.userData.fore.rotation.x = damp(ud.armR.userData.fore.rotation.x, -0.22, 12, dt);
-    // support hand
-    ud.armL.rotation.x = damp(ud.armL.rotation.x, aimX + (a.reloading>0? 0.7:0.06), 13, dt);
-    ud.armL.rotation.z = damp(ud.armL.rotation.z, 0.5, 13, dt);
-    ud.armL.userData.fore.rotation.x = damp(ud.armL.userData.fore.rotation.x, -0.72, 12, dt);
+    ud.armR.rotation.z = damp(ud.armR.rotation.z, -0.10, 14, dt);
+    ud.armR.userData.fore.rotation.x = damp(ud.armR.userData.fore.rotation.x, -0.30, 12, dt);
+    // support hand comes across the chest to the foregrip rather than out to the side
+    ud.armL.rotation.x = damp(ud.armL.rotation.x, aimX + (a.reloading>0? 0.7:0.10), 13, dt);
+    ud.armL.rotation.z = damp(ud.armL.rotation.z, -0.30, 13, dt);
+    ud.armL.rotation.y = damp(ud.armL.rotation.y || 0, 0.42, 13, dt);
+    ud.armL.userData.fore.rotation.x = damp(ud.armL.userData.fore.rotation.x, -0.55, 12, dt);
     if(a.reloading > 0){
       const rp = 1 - a.reloading/(a.reloadTotal||1);
       ud.armL.rotation.x += Math.sin(rp*Math.PI*2)*0.45;
@@ -5726,12 +5882,13 @@ function animateActor(a, dt){
   }
   if(!a.swinging && (!armed || item.kind!=='weapon')){
     ud.armR.userData.fore.rotation.x = damp(ud.armR.userData.fore.rotation.x, -0.5, 9, dt);
+    ud.armL.rotation.y = damp(ud.armL.rotation.y || 0, 0, 9, dt);
   }
 
   // cape sway
   if(ud.cape){
     ud.cape.rotation.x = damp(ud.cape.rotation.x, -0.12 - hspeed*0.035, 6, dt);
-    ud.cape.position.z = -0.33 - hspeed*0.012;
+    ud.cape.position.z = 0.01 - hspeed*0.010;
   }
   // emote
   if(a.emoteT > 0){
@@ -6523,11 +6680,23 @@ function bindInput(){
     const d = Math.hypot(dx,dy);
     const k = d > max ? max/d : 1;
     nub.style.transform = `translate(${dx*k}px, ${dy*k}px)`;
-    Input.moveX = clamp(dx/max, -1, 1);
-    Input.moveY = clamp(-dy/max, -1, 1);
-    Input.moveMag = Math.min(1, Math.hypot(Input.moveX, Input.moveY));
-    // auto-sprint on a full push forward
-    if(Player) Player.sprint = Input.moveY > 0.86 && !Player.ads;
+    // Deadzone stops a resting thumb from drifting; the curve gives fine control
+    // near the centre while still reaching full speed at the edge.
+    const raw = Math.min(1, d/max);
+    const DEAD = 0.16;
+    if(raw <= DEAD){
+      Input.moveX = 0; Input.moveY = 0; Input.moveMag = 0;
+      if(Player) Player.sprint = false;
+      return;
+    }
+    const t01 = (raw - DEAD) / (1 - DEAD);
+    const curved = t01 * (0.45 + 0.55*t01);
+    const nx = dx/(d||1), ny = -dy/(d||1);
+    Input.moveX = nx * curved;
+    Input.moveY = ny * curved;
+    Input.moveMag = curved;
+    // auto-sprint on a near-full push in any direction, not just straight ahead
+    if(Player) Player.sprint = curved > 0.82 && !Player.ads;
   }
   function stickEnd(){
     Input.stickId = null; Input.moveX = 0; Input.moveY = 0; Input.moveMag = 0;
@@ -6569,7 +6738,7 @@ function bindInput(){
       else if(t.identifier === Input.lookId){
         // tap on the look zone = fire / place / interact
         const dt = performance.now() - Input.lookStartT;
-        if(Input.lookMoved < 12 && dt < 260 && GS.phase === 'ground'){
+        if(Input.lookMoved < 20 && dt < 330 && GS.phase === 'ground'){
           if(Build.active){ if(Build.previewValid) placeStructure(Player, Build.target); }
           else actorFire(Player);
         }
@@ -7219,7 +7388,7 @@ function buildLobbyCharacter(){
   const pick = buildPickaxeModel(P.pickaxe);
   pick.scale.setScalar(0.95);
   const hand = c.userData.foreR;
-  pick.position.set(0,-0.44,0.06);
+  pick.position.set(0,-0.345,0.05);
   pick.rotation.x = -0.3;
   hand.add(pick);
   // arms at rest, pickaxe carried at the side
@@ -7612,6 +7781,7 @@ function bindSettings(){
     ['setAdsSens','adsSens', v=>v],
     ['setFov','fov', v=>v],
     ['setQual','qual', v=>['LOW','MED','HI','ULT'][v]],
+    ['setAim','aimAssist', v=>['OFF','LOW','MED','HIGH'][v]],
   ];
   for(const [id,key,fmt] of sliders){
     const el = $(id), val = $(id+'V');
