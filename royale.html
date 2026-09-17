@@ -1391,7 +1391,24 @@ function boxGeo(w,h,d){ const k=`b${w}_${h}_${d}`; if(!GEO[k]) GEO[k]=new THREE.
 function cylGeo(rt,rb,h,s){ const k=`c${rt}_${rb}_${h}_${s}`; if(!GEO[k]) GEO[k]=new THREE.CylinderGeometry(rt,rb,h,s); return GEO[k]; }
 function sphGeo(r,w,h){ const k=`s${r}_${w}_${h}`; if(!GEO[k]) GEO[k]=new THREE.SphereGeometry(r,w,h); return GEO[k]; }
 
+// Everything that needs THREE at module scope is built here instead, so the
+// script can parse even when the library failed to load.
+function initThreeObjects(){
+  _fireOrigin = new THREE.Vector3();
+  _fireDir    = new THREE.Vector3();
+  _projV      = new THREE.Vector3();
+  Bus.pos = new THREE.Vector3();
+  Bus.dir = new THREE.Vector3();
+  Cam.pos = new THREE.Vector3();
+  Cam.look = new THREE.Vector3();
+  GHOST_MAT_OK  = new THREE.MeshBasicMaterial({ color:0x6ee8ff, transparent:true, opacity:0.34, depthWrite:false });
+  GHOST_MAT_BAD = new THREE.MeshBasicMaterial({ color:0xff4757, transparent:true, opacity:0.3, depthWrite:false });
+  GHOST_EDGE    = new THREE.LineBasicMaterial({ color:0x9ff4ff, transparent:true, opacity:0.75 });
+  GHOST_MAT_OK._shared = GHOST_MAT_BAD._shared = GHOST_EDGE._shared = true;
+}
+
 function initRenderer(){
+  initThreeObjects();
   const canvas = $('gameCanvas');
   renderer = new THREE.WebGLRenderer({ canvas, antialias:false, powerPreference:'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, Q.pixelRatio));
@@ -4001,7 +4018,6 @@ function resolveHorizontal(a, nx, nz, r, height){
 }
 
 /* raycast against terrain + colliders + actors */
-const _rayTmp = new THREE.Vector3();
 function raycastWorld(origin, dir, maxDist, opts){
   opts = opts||{};
   let hit = null;
@@ -4379,8 +4395,7 @@ function killActor(a, source, isStorm){
 /* ============================================================================
    17. FIRING
    ========================================================================== */
-const _fireOrigin = new THREE.Vector3();
-const _fireDir = new THREE.Vector3();
+let _fireOrigin, _fireDir;   // created in initThreeObjects()
 function actorFire(a){
   const item = currentItem(a);
   if(!item) { swingPickaxe(a); return; }
@@ -4649,10 +4664,7 @@ function pieceGeometry(piece, mat, ghost){
   }
   return gb.build();
 }
-const GHOST_MAT_OK  = new THREE.MeshBasicMaterial({ color:0x6ee8ff, transparent:true, opacity:0.34, depthWrite:false });
-const GHOST_MAT_BAD = new THREE.MeshBasicMaterial({ color:0xff4757, transparent:true, opacity:0.3, depthWrite:false });
-const GHOST_EDGE    = new THREE.LineBasicMaterial({ color:0x9ff4ff, transparent:true, opacity:0.75 });
-GHOST_MAT_OK._shared = GHOST_MAT_BAD._shared = GHOST_EDGE._shared = true;
+let GHOST_MAT_OK, GHOST_MAT_BAD, GHOST_EDGE;   // created in initThreeObjects()
 
 function ensurePreview(){
   if(Build.preview){ World.group.remove(Build.preview); }
@@ -5115,7 +5127,7 @@ function updateStorm(dt){
 /* ============================================================================
    21. BATTLE BUS + DROP
    ========================================================================== */
-const Bus = { mesh:null, pos:new THREE.Vector3(), dir:new THREE.Vector3(), t:0, active:false, angle:0 };
+const Bus = { mesh:null, pos:null, dir:null, t:0, active:false, angle:0 };
 function buildBus(){
   const gb = new GeoBuilder();
   gb.use('metal', 0x3f7fe0, 1.6);
@@ -5288,7 +5300,7 @@ function updateSkydive(a, dt){
    ========================================================================== */
 let Player = null;
 const Cam = { yaw:0, pitch:0, dist:CFG.camDist, targetDist:CFG.camDist, shake:0, shakeT:0,
-              offX:0.55, fov:78, targetFov:78, pos:new THREE.Vector3(), look:new THREE.Vector3() };
+              offX:0.55, fov:78, targetFov:78, pos:null, look:null };
 
 function shakeCamera(amount, dur){ Cam.shake = Math.max(Cam.shake, amount); Cam.shakeT = dur||0.35; }
 
@@ -6280,7 +6292,7 @@ function showHitmarker(head){
   h.style.transition = 'none';
   requestAnimationFrame(()=>{ h.style.transition='opacity .22s'; h.style.opacity='0'; });
 }
-const _projV = new THREE.Vector3();
+let _projV;                  // created in initThreeObjects()
 function popDamage(target, amount, head, shieldOnly, isBuild){
   const el = document.createElement('div');
   el.className = 'pop' + (head?' head':'') + (shieldOnly?' shield':'') + (isBuild?' build':'');
@@ -7691,6 +7703,16 @@ function bindLobbyUI(){
 function boot(){
   const bar = $('bootBar').firstElementChild;
   const msg = $('bootMsg');
+  // The 3D library comes from a CDN. If it did not arrive, say so plainly
+  // instead of leaving the loading bar stuck forever.
+  if(typeof THREE === 'undefined'){
+    msg.innerHTML = 'Could not load the 3D engine.<br>Check your connection and reload.';
+    msg.style.color = '#ff4757';
+    msg.style.lineHeight = '1.7';
+    bar.style.width = '100%';
+    bar.style.background = '#ff4757';
+    return;
+  }
   const steps = [
     ['Loading engine', ()=>{ applyQuality(P.settings.qual); initRenderer(); }],
     ['Painting textures', ()=>{ buildTextures(); }],
@@ -7710,7 +7732,14 @@ function boot(){
     const [label, fn] = steps[i];
     msg.textContent = label;
     bar.style.width = Math.round((i/steps.length)*100)+'%';
-    try{ fn(); }catch(e){ console.error('Boot step failed:', label, e); }
+    try{ fn(); }
+    catch(e){
+      console.error('Boot step failed:', label, e);
+      msg.innerHTML = 'Startup failed at: ' + label + '<br>Try reloading the page.';
+      msg.style.color = '#ff4757';
+      msg.style.lineHeight = '1.7';
+      return;
+    }
     i++;
     setTimeout(step, 180);
   }
