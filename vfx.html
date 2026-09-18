@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#05070a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VFX LAB">
+<meta name="screen-orientation" content="landscape">
 <title>VFX LAB</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -41,7 +46,8 @@
   #ui.hidden > *:not(#toast):not(#hud){display:none;}
 
   /* ---------- top bar ---------- */
-  #topbar{position:absolute; top:calc(env(safe-area-inset-top) + 10px); left:12px; right:12px;
+  #topbar{position:absolute; top:calc(env(safe-area-inset-top) + 10px);
+          left:calc(env(safe-area-inset-left) + 12px); right:calc(env(safe-area-inset-right) + 12px);
           display:flex; align-items:center; gap:8px;}
   .brand{font-weight:700; letter-spacing:3px; font-size:13px; color:var(--cyan); white-space:nowrap;}
   .brand b{color:var(--amber); font-weight:700;}
@@ -61,7 +67,7 @@
   .btn.ghost{background:rgba(10,16,22,0.5);}
 
   /* ---------- hud ---------- */
-  #hud{position:absolute; top:calc(env(safe-area-inset-top) + 54px); left:12px;
+  #hud{position:absolute; top:calc(env(safe-area-inset-top) + 54px); left:calc(env(safe-area-inset-left) + 12px);
        font-family:'JetBrains Mono',monospace; font-size:10px; line-height:1.55;
        color:var(--muted); letter-spacing:0.5px; pointer-events:none; text-shadow:0 1px 3px #000;}
   #hud .k{color:#3d4d5c;}
@@ -71,7 +77,7 @@
   #graph{display:block; margin-top:4px; opacity:0.8;}
 
   /* ---------- preset rail ---------- */
-  #presets{position:absolute; top:calc(env(safe-area-inset-top) + 50px); right:12px;
+  #presets{position:absolute; top:calc(env(safe-area-inset-top) + 50px); right:calc(env(safe-area-inset-right) + 12px);
            display:flex; flex-direction:column; gap:5px; align-items:flex-end; max-height:56vh; overflow:auto;
            scrollbar-width:none;}
   #presets::-webkit-scrollbar{display:none;}
@@ -83,7 +89,7 @@
   .pbtn.on{border-color:var(--amber); color:var(--amber); background:rgba(255,180,84,0.13);}
 
   /* ---------- tool cluster ---------- */
-  #tools{position:absolute; left:12px; bottom:calc(env(safe-area-inset-bottom) + 14px);
+  #tools{position:absolute; left:calc(env(safe-area-inset-left) + 12px); bottom:calc(env(safe-area-inset-bottom) + 14px);
          display:flex; flex-direction:column; gap:7px;}
   .tool{
     width:50px; height:50px; border-radius:13px;
@@ -97,7 +103,7 @@
            box-shadow:0 0 16px rgba(255,122,60,0.25);}
   .tool:active{transform:scale(0.94);}
 
-  #playrow{position:absolute; right:12px; bottom:calc(env(safe-area-inset-bottom) + 14px);
+  #playrow{position:absolute; right:calc(env(safe-area-inset-right) + 12px); bottom:calc(env(safe-area-inset-bottom) + 14px);
            display:flex; gap:7px; align-items:center;}
 
   /* ---------- param sheet ---------- */
@@ -199,11 +205,64 @@
            border:1px solid #3a1c1c; background:#120a0a; padding:12px; border-radius:8px; display:none;}
 
   body.briefopen #presets{ display:none; }
+  @media (max-width:420px){
+    #btnDirector{ font-size:0; padding:0 8px; }
+    #btnDirector::after{ content:'DIR'; font-size:10px; letter-spacing:1px; }
+  }
   @media (max-width:540px){
     .brand span{ display:none; }
     .brand{ font-size:12px; letter-spacing:2px; }
     #btnDirector{ font-size:10px; padding:0 8px; }
     #hud{ top:calc(env(safe-area-inset-top) + 50px); }
+  }
+  /* ---------- phone held sideways: short and wide ---------- */
+  @media (orientation:landscape) and (max-height:560px){
+    #topbar{ top:calc(env(safe-area-inset-top) + 6px); gap:6px; }
+    .btn{ height:29px; min-width:29px; font-size:10px; padding:0 8px; border-radius:7px; }
+    .btn.sm{ height:25px; font-size:9px; }
+    .brand span{ display:none; }
+    .brand{ font-size:11px; letter-spacing:2px; }
+
+    #hud{ top:calc(env(safe-area-inset-top) + 40px); font-size:9px; line-height:1.4; }
+    #graph{ display:none; }
+
+    #presets{ top:calc(env(safe-area-inset-top) + 40px); gap:3px; max-height:calc(100% - 104px); }
+    .pbtn{ font-size:9px; padding:3px 7px; border-radius:5px; }
+
+    /* thumb clusters: tools under the left thumb, transport under the right */
+    #tools{ flex-direction:row; bottom:calc(env(safe-area-inset-bottom) + 8px); gap:6px; }
+    .tool{ width:46px; height:44px; border-radius:11px; }
+    .tool i{ font-size:15px; }
+    .tool u{ font-size:7px; }
+    #playrow{ bottom:calc(env(safe-area-inset-bottom) + 8px); }
+
+    /* the parameter sheet becomes a side rack instead of eating the whole frame */
+    #sheet{
+      left:auto; right:0; top:0; bottom:0; width:min(56vw, 330px); max-height:none;
+      border-radius:0; border-top:none; border-left:1px solid var(--line2);
+      transform:translateX(102%); padding-bottom:0;
+    }
+    #sheet.open{ transform:translateX(0); }
+    #sheetHead{ padding:6px 10px 5px calc(10px + env(safe-area-inset-left)); }
+    #sheetBody{ padding:8px 10px calc(env(safe-area-inset-bottom) + 22px); }
+    #sheetBody{ padding-right:calc(10px + env(safe-area-inset-right)); }
+    .gdesc{ font-size:11px; margin-bottom:8px; }
+    .ctrl{ margin-bottom:9px; }
+    .ctrl .nm{ font-size:11px; }
+    .ctrl .hint{ font-size:10px; }
+    body.panelopen #presets{ display:none; }
+    body.panelopen #playrow{ right:calc(min(56vw, 330px) + 10px); }
+    /* keep the chrome clear of the rack so the close button stays reachable */
+    body.panelopen #topbar{ right:calc(min(56vw, 330px) + 10px); }
+    body.panelopen #brief{ left:calc(50% - min(28vw, 165px)); }
+
+    #brief{ top:calc(env(safe-area-inset-top) + 40px); width:min(62vw, 430px); padding:9px 12px; }
+    #brief h3{ font-size:15px; margin:2px 0 4px; }
+    #brief p{ font-size:11px; margin-bottom:6px; }
+    .goal{ font-size:11px; margin-bottom:3px; }
+    body.briefopen #hud{ display:none; }
+
+    #toast{ bottom:calc(env(safe-area-inset-bottom) + 62px); font-size:10px; padding:6px 12px; }
   }
   @media (min-width:900px){
     body.briefopen #presets{ display:flex; top:calc(env(safe-area-inset-top) + 50px); }
@@ -234,6 +293,7 @@
     <button class="btn" id="btnDirector" title="Director mode">DIRECTOR</button>
     <button class="btn" id="btnShot" title="Save PNG">◙</button>
     <button class="btn" id="btnRec" title="Record WebM">●</button>
+    <button class="btn" id="btnFull" title="Fullscreen">⛶</button>
     <button class="btn" id="btnPanel" title="Parameters">≡</button>
   </div>
 
@@ -3111,12 +3171,16 @@ function bindInput(){
   };
   $('#btnStep').onclick = () => { stepOnce = true; paused = true; $('#btnPause').classList.add('on'); $('#btnPause').textContent='▶'; };
   $('#btnReset').onclick = () => { resetFields(); IMP.length=0; BLAST.pow=0; toast('FIELDS CLEARED'); };
+  $('#btnFull').onclick = toggleFullscreen;
   $('#btnShot').onclick = capturePNG;
   $('#btnRec').onclick = toggleRecord;
   $('#btnDirector').onclick = toggleDirector;
   $('#btnCloseBrief').onclick = toggleDirector;
   $('#btnTake').onclick = startTake;
   $('#btnNextShot').onclick = () => { DIR.idx = (DIR.idx+1) % BRIEFS.length; showBrief(); };
+
+  document.addEventListener('fullscreenchange', () => { pendingResize = true; });
+  document.addEventListener('webkitfullscreenchange', () => { pendingResize = true; });
 
   window.addEventListener('keydown', e => {
     if(e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
@@ -3128,6 +3192,7 @@ function bindInput(){
     else if(k === 'c') capturePNG();
     else if(k === 'd') toggleDirector();
     else if(k === 'h'){ $('#ui').classList.toggle('hidden'); }
+    else if(k === 'g') toggleFullscreen();
     else if(k === 'arrowleft') CAM.yaw -= 0.08;
     else if(k === 'arrowright') CAM.yaw += 0.08;
     else if(k === 'arrowup') CAM.pitch += 0.05;
@@ -3156,6 +3221,34 @@ function stamp(){
   const d = new Date();
   const p = n => String(n).padStart(2,'0');
   return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());
+}
+function isPhone(){
+  return (window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
+         Math.min(window.innerWidth, window.innerHeight) < 560;
+}
+function toggleFullscreen(){
+  const el = document.documentElement;
+  const enter = el.requestFullscreen || el.webkitRequestFullscreen;
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  const isOn = document.fullscreenElement || document.webkitFullscreenElement;
+  try{
+    if(!isOn){
+      if(!enter){ toast('NO FULLSCREEN ON THIS BROWSER — ADD TO HOME SCREEN', 3000); return; }
+      const r = enter.call(el);
+      const after = () => {
+        // landscape is the playable shape; lock it where the browser allows
+        if(screen.orientation && screen.orientation.lock){
+          screen.orientation.lock('landscape').catch(()=>{});
+        }
+        pendingResize = true;
+      };
+      if(r && r.then) r.then(after, () => toast('FULLSCREEN BLOCKED')); else after();
+    } else {
+      if(screen.orientation && screen.orientation.unlock){ try{ screen.orientation.unlock(); }catch(e){} }
+      if(exit) exit.call(document);
+      pendingResize = true;
+    }
+  }catch(err){ toast('FULLSCREEN UNAVAILABLE'); }
 }
 function capturePNG(){
   canvas.toBlob(b => { if(b){ download(b, 'vfxlab-'+stamp()+'.png'); toast('FRAME SAVED'); } }, 'image/png');
@@ -3209,7 +3302,8 @@ function applyQual(i, why){
   if(why) toast('ADAPTIVE · QUALITY ' + (qualIdx+1) + '/' + QUAL.length + ' · ' + why);
 }
 function autoQuality(){
-  const coarse = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || window.innerWidth < 820;
+  const coarse = (window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
+                 Math.min(window.innerWidth, window.innerHeight) < 820;
   const cores = navigator.hardwareConcurrency || 4;
   let i = coarse ? 2 : 4;
   if(!coarse && cores >= 8) i = 5;
@@ -3461,9 +3555,16 @@ function init(){
 
     bootEl.classList.add('gone');
     requestAnimationFrame(loop);
+    const portraitPhone = () => isPhone() && window.innerHeight > window.innerWidth;
     setTimeout(()=>{
-      if(!restored) toast('TAP THE GROUND TO IGNITE · DRAG TO ORBIT · ≡ FOR THE RIG', 3800);
+      if(portraitPhone()) toast('TURN THE PHONE SIDEWAYS · ⛶ FOR FULLSCREEN', 4200);
+      else if(!restored) toast('TAP THE GROUND TO IGNITE · DRAG TO ORBIT · ≡ FOR THE RIG', 3800);
     }, 700);
+    if(isPhone()){
+      // the address bar resizing the viewport is a resize like any other
+      window.addEventListener('pageshow', ()=>{ pendingResize = true; });
+      if(window.visualViewport) window.visualViewport.addEventListener('resize', ()=>{ pendingResize = true; });
+    }
   }catch(err){
     fatal('Initialisation failed.\n\n' + (err && err.stack ? err.stack : String(err)));
   }
