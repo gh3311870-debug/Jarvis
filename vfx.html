@@ -199,6 +199,12 @@
            border:1px solid #3a1c1c; background:#120a0a; padding:12px; border-radius:8px; display:none;}
 
   body.briefopen #presets{ display:none; }
+  @media (max-width:540px){
+    .brand span{ display:none; }
+    .brand{ font-size:12px; letter-spacing:2px; }
+    #btnDirector{ font-size:10px; padding:0 8px; }
+    #hud{ top:calc(env(safe-area-inset-top) + 50px); }
+  }
   @media (min-width:900px){
     body.briefopen #presets{ display:flex; top:calc(env(safe-area-inset-top) + 50px); }
     :root{--sheet-h:100vh;}
@@ -599,6 +605,8 @@ R('fire','ignitionTemp','Ignition point',0.85,0.3,2,0.01,'Fuel below this temper
 R('fire','burnRate','Burn rate',1.8,0.1,12,0.05,'Fuel consumed per second once lit. Controls flame length.');
 R('fire','heatRelease','Heat release',1.1,0,4,0.01,'Kelvin per unit fuel burnt — the calorific value.');
 R('fire','sootYield','Soot yield',0.6,0,3,0.01,'Smoke produced per unit fuel. Clean gas flames are near zero.');
+R('fire','flameTemp','Adiabatic flame temp',2.0,0.8,3.6,0.01,'The ceiling combustion can reach, in kK. Wood sits near 2.0, propane 2.25, oxy-acetylene 3.4. Without it the reaction feeds itself and runs away.');
+R('fire','smokeInject','Smoke at source',0.25,0,3,0.01,'Soot injected directly, independent of burning — this is what makes a smoke machine, a fog bank or a smouldering tyre fire.');
 R('fire','cooling','Radiative cooling',1.1,0,6,0.01,'Stefan–Boltzmann style T⁴ loss. This is what fades flame tips to smoke.');
 R('fire','ambientTemp','Ambient',0.29,0.1,0.6,0.005,'Background air temperature in kK (0.29 ≈ 17 °C).');
 R('fire','densityDiss','Smoke dissipation',0.12,0,1.5,0.005,'Soot fade-out per second.');
@@ -690,56 +698,61 @@ const PRESETS = [
       injectRate:1.0, injectRadius:0.1, injectTemp:1.55, jetSpeed:0, buoyancy:3.4, vorticity:0.34,
       turbulence:0.5, burnRate:1.7, heatRelease:1.2, sootYield:0.3, cooling:1.0, extinction:30,
       emissionGain:3.2, sparkRate:0.5, env:'DUSK', fireLight:1.9, dustAmount:0.3, jetAngle:0,
-      densityDiss:0.22 } , cam:{dist:6.6, yaw:0.72, pitch:0.11, ty:1.45} },
+      densityDiss:0.22, flameTemp:1.95, smokeInject:0.22 } , cam:{dist:6.6, yaw:0.72, pitch:0.11, ty:1.45} },
   { name:'BONFIRE', keys:'2', v:{
-      injectRate:2.4, injectRadius:0.2, injectTemp:1.75, jetSpeed:2.5, buoyancy:4.2, vorticity:0.45,
-      turbulence:0.75, burnRate:2.1, heatRelease:1.35, sootYield:0.7, cooling:0.95, extinction:28,
+      injectRate:1.0, injectRadius:0.18, injectTemp:1.75, jetSpeed:2.5, buoyancy:4.2, vorticity:0.45,
+      turbulence:0.75, burnRate:2.1, heatRelease:1.35, sootYield:0.3, cooling:0.95, extinction:28,
+      flameTemp:2.1, smokeInject:0.3,
       emissionGain:3.0, sparkRate:0.8, emberGlow:3.2, env:'NIGHT', fireLight:3.2, exposure:0.8 } , cam:{dist:8.4, yaw:0.62, pitch:0.14, ty:2.1} },
   { name:'TORCH', keys:'3', v:{
       injectRate:0.7, injectRadius:0.05, injectTemp:2.5, jetSpeed:6, jetAngle:14, buoyancy:3.4,
       vorticity:0.5, turbulence:0.5, burnRate:3.4, heatRelease:1.0, sootYield:0.24, cooling:1.6,
-      extinction:18, emissionGain:3.4, sparkRate:0.35, emitY:0.1, env:'NIGHT', fireLight:2.2 } , cam:{dist:3.6, yaw:0.9, pitch:0.08, ty:1.35} },
+      extinction:18, emissionGain:3.4, sparkRate:0.35, emitY:0.1, env:'NIGHT', fireLight:2.2,
+      flameTemp:2.25, smokeInject:0.05 } , cam:{dist:3.6, yaw:0.9, pitch:0.08, ty:1.35} },
   { name:'BLOWTORCH', keys:'4', v:{
       injectRate:0.9, injectRadius:0.035, injectTemp:2.9, jetSpeed:26, jetAngle:62, jetSpread:0.1,
-      buoyancy:1.2, vorticity:0.6, turbulence:0.35, burnRate:5.5, heatRelease:0.85, sootYield:0.1,
-      cooling:2.4, extinction:12, emissionGain:4.2, bbShift:-0.35, sparkRate:0.2, emitY:0.28,
+      buoyancy:1.2, vorticity:0.6, turbulence:0.35, burnRate:7.0, heatRelease:0.85, sootYield:0.1,
+      cooling:1.2, extinction:12, emissionGain:4.2, bbShift:-0.35, sparkRate:0.2, emitY:0.28,
+      flameTemp:2.95, smokeInject:0.02,
       env:'STUDIO', exposure:0.7, heatHaze:2.2 } , cam:{dist:2.9, yaw:1.25, pitch:0.04, ty:2.4} },
   { name:'ROCKET PLUME', keys:'5', v:{
       injectRate:3.0, injectRadius:0.075, injectTemp:3.0, jetSpeed:34, jetAngle:180, jetSpread:0.12,
       emitY:0.62, buoyancy:1.0, vorticity:0.55, turbulence:0.8, turbScale:2.6, burnRate:8.0,
-      heatRelease:1.0, sootYield:0.7, cooling:1.7, extinction:22, emissionGain:3.6, expansion:1.4,
+      heatRelease:1.0, sootYield:0.5, cooling:1.7, extinction:22, emissionGain:3.6, expansion:1.4,
+      flameTemp:3.0, smokeInject:0.5,
       sparkRate:0.55, env:'BLUE HOUR', fireLight:3.4, exposure:0.65, bloom:0.8, heatHaze:2.5 } , cam:{dist:8.6, yaw:0.5, pitch:0.06, ty:3.1} },
   { name:'SMOKE COLUMN', keys:'6', v:{
       injectRate:1.6, injectRadius:0.14, injectTemp:0.62, jetSpeed:3, buoyancy:1.5, vorticity:0.4,
-      turbulence:0.55, burnRate:0.2, heatRelease:0.1, sootYield:2.4, cooling:0.5, extinction:44,
+      turbulence:0.55, burnRate:0.2, heatRelease:0.1, sootYield:0.3, cooling:0.5, extinction:44, smokeInject:2.2,
       albedo:0.82, emissionGain:0.0, sparkRate:0.0, densityDiss:0.04, env:'OVERCAST',
       skyLight:1.6, exposure:1.4, fireLight:0 } , cam:{dist:10.5, yaw:0.8, pitch:0.2, ty:3.6} },
   { name:'FUEL-AIR BLAST', keys:'7', v:{
       injectRate:0, buoyancy:5.0, vorticity:0.55, turbulence:0.9, burnRate:7.0, heatRelease:1.5,
-      sootYield:1.2, cooling:1.1, extinction:34, emissionGain:3.2, expansion:2.2, sparkRate:0.7,
+      sootYield:0.7, cooling:1.1, extinction:34, emissionGain:3.2, expansion:2.2, sparkRate:0.7, flameTemp:2.6,
       debrisAmount:0.7, env:'DUSK', shake:1.0, bloom:0.9, fireLight:4.0 }, action:'blast' , cam:{dist:10.5, yaw:0.66, pitch:0.1, ty:2.3} },
   { name:'MUZZLE FLASH', keys:'8', v:{
       injectRate:0, injectRadius:0.06, injectTemp:3.2, buoyancy:2.0, vorticity:0.7, turbulence:1.2,
-      burnRate:11.0, heatRelease:1.2, sootYield:0.9, cooling:5.5, extinction:20, emissionGain:5.0,
+      burnRate:11.0, heatRelease:1.2, sootYield:0.5, cooling:5.5, extinction:20, emissionGain:5.0, flameTemp:3.2,
       sparkRate:0.9, sparkLife:0.8, env:'NIGHT', exposure:0.6, bloom:1.0, shake:0.8 }, action:'flash' , cam:{dist:3.2, yaw:1.1, pitch:0.05, ty:2.0} },
   { name:'VOLCANIC VENT', keys:'9', v:{
-      injectRate:3.4, injectRadius:0.22, injectTemp:1.35, jetSpeed:9, buoyancy:3.0, vorticity:0.5,
-      turbulence:0.9, turbScale:1.2, burnRate:1.2, heatRelease:0.9, sootYield:2.6, cooling:0.8,
+      injectRate:1.1, injectRadius:0.2, injectTemp:1.35, jetSpeed:9, buoyancy:3.0, vorticity:0.5,
+      turbulence:0.9, turbScale:1.2, burnRate:0.8, heatRelease:0.9, sootYield:0.45, cooling:0.8,
+      flameTemp:1.5, smokeInject:0.85,
       extinction:52, albedo:0.42, emissionGain:1.6, emissionTemp:0.75, sparkRate:0.6, sparkLife:4.0,
       partGravity:8, env:'BLUE HOUR', exposure:1.1, fireLight:2.6 } , cam:{dist:10.0, yaw:0.74, pitch:0.16, ty:3.2} },
   { name:'DRAGON BREATH', keys:'0', v:{
       injectRate:2.2, injectRadius:0.06, injectTemp:2.7, jetSpeed:30, jetAngle:96, jetSpread:0.3,
       emitY:0.5, buoyancy:2.2, vorticity:0.75, turbulence:1.1, burnRate:4.5, heatRelease:1.2,
-      sootYield:0.5, cooling:1.9, extinction:20, emissionGain:4.0, sparkRate:0.7, env:'NIGHT',
+      sootYield:0.4, cooling:1.9, extinction:20, emissionGain:4.0, sparkRate:0.7, env:'NIGHT', flameTemp:2.7,
       fireLight:3.0, exposure:0.7, bloom:0.85, heatHaze:2.0 } , cam:{dist:7.8, yaw:1.0, pitch:0.09, ty:3.3} },
   { name:'COLD FOG', keys:'', v:{
       injectRate:2.0, injectRadius:0.3, injectTemp:0.26, jetSpeed:0, buoyancy:-0.4, smokeWeight:1.6,
-      vorticity:0.22, turbulence:0.3, burnRate:0, heatRelease:0, sootYield:1.8, cooling:0.2,
+      vorticity:0.22, turbulence:0.3, burnRate:0, heatRelease:0, sootYield:0, smokeInject:0.8, cooling:0.2,
       extinction:30, albedo:0.92, phaseG:0.55, emissionGain:0, sparkRate:0, densityDiss:0.03,
       env:'BLUE HOUR', skyLight:2.0, exposure:1.5, emitY:0.02, fireLight:0 } , cam:{dist:8.2, yaw:0.7, pitch:0.06, ty:1.1} },
   { name:'NUKE (SMALL)', keys:'', v:{
       injectRate:0, buoyancy:7.5, smokeWeight:0.35, vorticity:0.7, turbulence:1.2, turbScale:1.0,
-      burnRate:6.0, heatRelease:2.2, sootYield:1.8, cooling:0.9, extinction:40, emissionGain:3.4,
+      burnRate:6.0, heatRelease:2.2, sootYield:0.4, cooling:0.9, extinction:40, emissionGain:3.4, flameTemp:3.4,
       expansion:2.8, sparkRate:0.4, debrisAmount:0.9, env:'DUSK', shake:1.6, bloom:1.1,
       fireLight:6.0, exposure:0.55, pressIters:32 }, action:'nuke', cam:{dist:13.5, yaw:0.68, pitch:0.12, ty:3.0} }
 ];
@@ -749,29 +762,29 @@ const PRESETS = [
    ========================================================================== */
 const BRIEFS = [
   { name:'CANDLE VIGIL', text:'A single mourning candle. Tiny, steady, warm. No smoke haze, no sparks — the flame must not wander.',
-    goals:[ {m:'peakK', label:'Peak temperature', lo:1200, hi:1750, unit:'K'},
-            {m:'height', label:'Plume height', lo:0.04, hi:0.22, unit:'', fmt:'pct'},
-            {m:'smoke', label:'Smoke mass', lo:0, hi:0.22, unit:''},
+    goals:[ {m:'peakK', label:'Peak temperature', lo:900, hi:1600, unit:'K'},
+            {m:'height', label:'Plume height', lo:0.02, hi:0.16, unit:'', fmt:'pct'},
+            {m:'smoke', label:'Smoke mass', lo:0, hi:1.2, unit:''},
             {m:'sparks', label:'Ember density', lo:0, hi:0.05, unit:''} ] },
   { name:'HERO CAMPFIRE', text:'Act two, the survivors make camp. Wide, licking flames with visible embers rising, and enough smoke to catch the moonlight.',
     goals:[ {m:'peakK', label:'Peak temperature', lo:1500, hi:2200, unit:'K'},
-            {m:'height', label:'Plume height', lo:0.3, hi:0.62, unit:'', fmt:'pct'},
-            {m:'smoke', label:'Smoke mass', lo:0.35, hi:1.1, unit:''},
+            {m:'height', label:'Plume height', lo:0.18, hi:0.55, unit:'', fmt:'pct'},
+            {m:'smoke', label:'Smoke mass', lo:4, hi:30, unit:''},
             {m:'sparks', label:'Ember density', lo:0.3, hi:1.0, unit:''} ] },
   { name:'BLAST FURNACE', text:'Industrial insert. A hard blue-white jet under pressure, minimal soot, the wall behind it visibly rippling with heat.',
-    goals:[ {m:'peakK', label:'Peak temperature', lo:2600, hi:3400, unit:'K'},
-            {m:'smoke', label:'Smoke mass', lo:0, hi:0.3, unit:''},
-            {m:'speed', label:'Peak flow speed', lo:3.5, hi:14, unit:'m/s'},
-            {m:'haze', label:'Heat distortion', lo:1.4, hi:4, unit:'×'} ] },
+    goals:[ {m:'peakK', label:'Peak temperature', lo:2200, hi:3400, unit:'K'},
+            {m:'smoke', label:'Smoke mass', lo:0, hi:2.5, unit:''},
+            {m:'speed', label:'Peak flow speed', lo:6, hi:30, unit:'m/s'},
+            {m:'haze', label:'Heat distortion', lo:1.4, hi:4, unit:'x'} ] },
   { name:'DISTRESS SIGNAL', text:'A thick black column visible for miles. Cold, greasy, slow — this is burning tyres, not a campfire.',
-    goals:[ {m:'smoke', label:'Smoke mass', lo:1.6, hi:6, unit:''},
-            {m:'peakK', label:'Peak temperature', lo:500, hi:1250, unit:'K'},
-            {m:'height', label:'Plume height', lo:0.62, hi:1.0, unit:'', fmt:'pct'},
+    goals:[ {m:'smoke', label:'Smoke mass', lo:25, hi:200, unit:''},
+            {m:'peakK', label:'Peak temperature', lo:400, hi:1300, unit:'K'},
+            {m:'height', label:'Plume height', lo:0.35, hi:1.0, unit:'', fmt:'pct'},
             {m:'albedo', label:'Soot absorption', lo:0, hi:0.45, unit:''} ] },
-  { name:'THIRD ACT DETONATION', text:'One fireball, one frame. Maximum heat, maximum throw, debris in the air and the camera taking the punch.',
-    goals:[ {m:'peakK', label:'Peak temperature', lo:2400, hi:3600, unit:'K'},
-            {m:'speed', label:'Peak flow speed', lo:7, hi:30, unit:'m/s'},
-            {m:'smoke', label:'Smoke mass', lo:0.8, hi:5, unit:''},
+  { name:'THIRD ACT DETONATION', text:'One fireball, one frame. Set the rig, roll the take, then hit BLAST while the camera is running — maximum heat, maximum throw, debris in the air.',
+    goals:[ {m:'peakK', label:'Peak temperature', lo:2200, hi:3600, unit:'K'},
+            {m:'speed', label:'Peak flow speed', lo:8, hi:40, unit:'m/s'},
+            {m:'smoke', label:'Smoke mass', lo:10, hi:120, unit:''},
             {m:'debris', label:'Debris', lo:0.45, hi:1, unit:''} ] }
 ];
 
@@ -982,7 +995,7 @@ const SH_SCAL = GLSL_IMPULSE + `
 uniform sampler2D uVel, uScal, uHat;
 uniform float uDt, uTime;
 uniform float uBurn, uIgn, uHeat, uSoot, uCool, uAmb, uDensDiss, uTempDiss;
-uniform float uInjRate, uInjTemp;
+uniform float uInjRate, uInjTemp, uTmax, uSmokeInj;
 uniform vec4 uEmit;      // xyz voxel, w radius(vox)
 uniform int uMode;       // 0 = back-advect only, 1 = full step
 uniform int uMacCormack;
@@ -1030,8 +1043,11 @@ void main(){
     float g = exp(-dot(d, d) * 2.5);
     float flick = 0.7 + 0.6 * vnoise(vec3(p.xz * 0.14, uTime * 1.7));
     fuel += uInjRate * g * flick * uDt * 7.0;
-    dens += uInjRate * g * uDt * 0.5;
     T = mix(T, max(T, uInjTemp), saturate(g * uDt * 14.0));
+  }
+  if(uSmokeInj > 0.0){
+    vec3 d = (p - uEmit.xyz) / max(uEmit.w, 1e-3);
+    dens += uSmokeInj * exp(-dot(d, d) * 2.5) * uDt * 3.0;
   }
 
   // --- interactive impulses
@@ -1045,8 +1061,8 @@ void main(){
       fuel += pr.y * g * uDt * 9.0;
       T = mix(T, max(T, pr.z), saturate(g * uDt * 14.0));
     } else if(ty == 1){                           // blast: instant hot fuel-air ball
-      fuel += pr.y * g * uDt * 13.0;
-      dens += pr.y * g * uDt * 1.2;
+      fuel += pr.y * g * uDt * 8.0;
+      dens += pr.y * g * uDt * 0.6;
       T = mix(T, max(T, pr.z), saturate(g * uDt * 26.0));
     } else if(ty == 4){                           // quench
       T = mix(T, uAmb, saturate(g * uDt * 6.0));
@@ -1060,7 +1076,8 @@ void main(){
   if(T > uIgn){
     burn = min(fuel, fuel * uBurn * uDt * (0.3 + saturate((T - uIgn) * 1.6)));
     fuel -= burn;
-    T    += burn * uHeat * 1.2;
+    // the reaction cannot push past the adiabatic flame temperature
+    T    = min(T + burn * uHeat * 1.2, max(T, uTmax));
     dens += burn * uSoot * 1.4;
   }
   fuel *= exp(-0.12 * uDt);
@@ -1543,7 +1560,8 @@ void main(){
   vec2 uv = gl_FragCoord.xy / uRes;
 
   if(uMode == 6){                                   // raw atlas slice, screen aligned
-    vec2 q = (uv - 0.5) * vec2(uAspect, 1.0) * 1.9 + 0.5;
+    // keep the slice in the grid's own proportions, not the screen's
+    vec2 q = (uv - 0.5) * vec2(uAspect, 1.0) * 1.9 / vec2(uGrid.x / uGrid.y, 1.0) + 0.5;
     if(q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0){ oCol = vec4(0.02, 0.025, 0.03, 1.0); return; }
     vec3 g = vec3(q, uSliceZ);
     vec4 s = tex3Dn(uScal, g);
@@ -1791,16 +1809,16 @@ void main(){
    ========================================================================== */
 const SH_COMPOSITE = `
 uniform sampler2D uScene, uVol, uHeat, uDepth;
-uniform vec2 uRes;
+uniform vec2 uRes, uVolRes;
 uniform float uHaze, uTime;
 in vec2 vUV;
 out vec4 oCol;
 void main(){
-  vec2 px = 1.0 / uRes;
-  // refraction from the heat gradient: ∇(optical path) bends the background
+  vec2 px = 1.0 / uVolRes;
+  // refraction from the heat gradient: the optical path gradient bends the background
   float hC = texture(uHeat, vUV).r;
-  float hX = texture(uHeat, vUV + vec2(px.x * 2.0, 0.0)).r - texture(uHeat, vUV - vec2(px.x * 2.0, 0.0)).r;
-  float hY = texture(uHeat, vUV + vec2(0.0, px.y * 2.0)).r - texture(uHeat, vUV - vec2(0.0, px.y * 2.0)).r;
+  float hX = texture(uHeat, vUV + vec2(px.x, 0.0)).r - texture(uHeat, vUV - vec2(px.x, 0.0)).r;
+  float hY = texture(uHeat, vUV + vec2(0.0, px.y)).r - texture(uHeat, vUV - vec2(0.0, px.y)).r;
   float shim = vnoise(vec3(vUV * 42.0, uTime * 2.6)) - 0.5;
   vec2 warp = vec2(hX, hY) * 0.055 * uHaze + vec2(shim, shim * 0.7) * hC * 0.0022 * uHaze;
   vec3 scene = texture(uScene, clamp(vUV + warp, vec2(0.0), vec2(1.0))).rgb;
@@ -2191,7 +2209,7 @@ function simStep(dt){
   const nImp = packImpulses();
   const emit = emitterWorld();
   const ev = worldToVoxel(emit);
-  const eRad = V.injectRadius * SIM.gx;
+  const eRad = Math.max(V.injectRadius * SIM.gx, 1.8);   // never smaller than the grid can resolve
   let p;
 
   // 1 — velocity: advect + forces
@@ -2292,6 +2310,8 @@ function simStep(dt){
   gl.uniform1f(p.u('uTempDiss'), V.tempDiss);
   gl.uniform1f(p.u('uInjRate'), V.injectRate);
   gl.uniform1f(p.u('uInjTemp'), V.injectTemp);
+  gl.uniform1f(p.u('uTmax'), V.flameTemp);
+  gl.uniform1f(p.u('uSmokeInj'), V.smokeInject);
   gl.uniform4f(p.u('uEmit'), ev[0], ev[1], ev[2], eRad);
   gl.uniform3fv(p.u('uImpPos'), impPos);
   gl.uniform3fv(p.u('uImpVel'), impVel);
@@ -2651,6 +2671,7 @@ function render(dt){
   bindTex(p,'uHeat', RT.vol.texs[1], 2);
   bindTex(p,'uDepth', RT.sceneDepth, 3);
   gl.uniform2f(p.u('uRes'), VIEW.rw, VIEW.rh);
+  gl.uniform2f(p.u('uVolRes'), VIEW.vw, VIEW.vh);
   gl.uniform1f(p.u('uHaze'), V.heatHaze);
   gl.uniform1f(p.u('uTime'), simTime);
   drawQuad();
