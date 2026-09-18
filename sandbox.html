@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>SANDLOT — 2D Playground</title>
+<title>SANDLOT — 2D Ragdoll Playground</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -82,13 +82,13 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
 
 #dock{display:flex;gap:6px;padding:6px;background:var(--panel);border:1px solid var(--line);
   border-radius:14px;backdrop-filter:blur(8px);pointer-events:auto;}
-.tool{width:56px;padding:6px 0 5px;border-radius:10px;border:1px solid transparent;background:rgba(255,255,255,.03);
+.tool{width:50px;padding:6px 0 5px;border-radius:10px;border:1px solid transparent;background:rgba(255,255,255,.03);
   color:var(--text);display:flex;flex-direction:column;align-items:center;gap:2px;font-family:inherit;}
 .tool span{font-size:17px;line-height:1;}
-.tool b{font-size:8.5px;letter-spacing:1px;color:var(--muted);font-weight:600;}
+.tool b{font-size:8px;letter-spacing:.5px;color:var(--muted);font-weight:600;}
 .tool.sel{border-color:var(--cyan);background:rgba(78,201,255,.15);}
 .tool.sel b{color:var(--cyan);}
-#sizebtn{width:46px;border-left:1px solid var(--line);margin-left:2px;}
+#sizebtn{width:40px;border-left:1px solid var(--line);margin-left:2px;}
 #sizebtn b{color:var(--amber);}
 
 @media (orientation:landscape) and (max-height:560px){
@@ -133,6 +133,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
 #intro .card{max-width:420px;border:1px solid var(--line);border-radius:14px;padding:16px 18px;background:rgba(10,15,21,.6);
   font-size:13px;line-height:1.85;color:var(--muted);text-align:left;}
 #intro .card b{color:var(--text);font-weight:600;}
+#intro .warn{font-size:10.5px;letter-spacing:2.5px;color:#a8484a;text-transform:uppercase;}
 #playbtn{margin-top:4px;padding:16px 42px;border-radius:999px;border:2px solid var(--amber);background:rgba(255,196,107,.14);
   color:var(--amber);font-family:inherit;font-size:16px;font-weight:700;letter-spacing:5px;}
 #playbtn:active{transform:scale(.96);}
@@ -145,7 +146,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
 <div id="hud">
   <div id="topbar">
     <div>
-      <div id="brand">SANDLOT<small>2D PHYSICS PLAYGROUND</small></div>
+      <div id="brand">SANDLOT<small>2D RAGDOLL PLAYGROUND</small></div>
       <div id="readout" class="mono">
         <div><b id="roTool">BUILD</b> · <span id="roMat">DIRT</span></div>
         <div id="roStats">-- FPS · 0 PROPS</div>
@@ -166,6 +167,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
     <button class="tool" data-tool="dig"><span>⛏</span><b>DIG</b></button>
     <button class="tool" data-tool="spawn"><span>✦</span><b>SPAWN</b></button>
     <button class="tool" data-tool="grab"><span>✋</span><b>GRAB</b></button>
+    <button class="tool" data-tool="weapon"><span>⌖</span><b>WEAPON</b></button>
     <button class="tool" id="sizebtn"><span>◎</span><b id="sizeLabel">R2</b></button>
   </div>
 </div>
@@ -176,7 +178,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
 <div id="sheetwrap">
   <div class="sheet">
     <h2>SANDLOT</h2>
-    <p>Everything here is a toy. Dig it, flood it, set it on fire, blow it up.</p>
+    <p>Everything here is a toy. Spawn people, dig it, flood it, set it on fire,
+       blow it up. Bodies and blood stay where they fall.</p>
 
     <h3>WORLD</h3>
     <div class="field">
@@ -187,7 +190,7 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
       <button class="btn hi" id="newBtn">NEW WORLD</button>
       <button class="btn" id="saveBtn">SAVE</button>
       <button class="btn" id="loadBtn">LOAD</button>
-      <button class="btn" id="clearBtn">CLEAR PROPS</button>
+      <button class="btn" id="clearBtn">CLEAR BODIES</button>
     </div>
 
     <h3>CONDITIONS</h3>
@@ -205,7 +208,8 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
     <h3>KEYBOARD</h3>
     <div class="keys">
       <div><b>WASD / ARROWS</b> move · <b>SPACE</b> jump</div>
-      <div><b>1 2 3 4</b> tools · <b>Q / E</b> cycle palette</div>
+      <div><b>1 2 3 4 5</b> tools · <b>Q / E</b> cycle palette</div>
+      <div><b>HOLD CLICK</b> fire the selected weapon at the cursor</div>
       <div><b>CLICK-DRAG</b> use tool · <b>WHEEL</b> zoom</div>
       <div><b>MIDDLE-DRAG</b> pan · <b>R</b> recenter camera</div>
     </div>
@@ -219,15 +223,17 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
 
 <div id="intro">
   <h1>SANDLOT</h1>
-  <div class="sub">2D Physics Playground</div>
+  <div class="sub">2D Ragdoll Playground</div>
   <div class="card">
-    <b>Joystick + JUMP</b> to run, leap and swim.<br>
-    <b>Drag the world</b> to build or dig with the selected block.<br>
-    <b>SPAWN</b> balls, crates, balloons, blobs and TNT.<br>
-    <b>GRAB</b> to fling props around with your finger.<br>
-    <b>Two fingers</b> pan and pinch-zoom the camera.<br>
-    Water flows, sand falls, lava burns, fire spreads.
+    <b>SPAWN</b> ragdolls, then take them apart.<br>
+    <b>WEAPON</b> aims from your character — pistol, SMG, shotgun, laser,
+    flamethrower, grenades.<br>
+    <b>Drag</b> the blade, taser or acid straight onto a body.<br>
+    <b>GRAB</b> a limb and fling them into the spikes.<br>
+    <b>BUILD / DIG</b> 19 materials; water flows, lava burns, acid dissolves.<br>
+    <b>Two fingers</b> pan and pinch-zoom.
   </div>
+  <div class="warn">Cartoon blood, dismemberment and gore.</div>
   <button id="playbtn">PLAY</button>
 </div>
 
@@ -366,6 +372,74 @@ const Audio2={
   },
   blip(){ if(!this.ok())return; const t=this.ctx.currentTime; this.tone(t,.05,620,880,.06,'square'); },
   hurt(){ if(!this.ok())return; const t=this.ctx.currentTime; this.tone(t,.3,220,70,.16,'sawtooth'); },
+  gun(wx,wy,type){
+    if(!this.ok())return; const v=this.at(wx,wy); if(v<.02)return;
+    const t=this.ctx.currentTime;
+    if(type==='shotgun'){
+      this.noise(t,.4,2200,90,.4*v,.5); this.tone(t,.28,150,40,.24*v,'sine');
+    } else if(type==='smg'){
+      this.noise(t,.11,3000,320,.2*v,.8); this.tone(t,.09,230,70,.11*v,'square');
+    } else {
+      this.noise(t,.17,2600,200,.28*v,.7); this.tone(t,.13,200,55,.16*v,'triangle');
+    }
+  },
+  squelch(wx,wy){
+    if(!this.ok())return; const v=this.at(wx,wy); if(v<.03)return;
+    const t=this.ctx.currentTime;
+    this.noise(t,.26,900,160,.3*v,1.6);
+    this.noise(t+.04,.2,420,90,.22*v,2.6);
+    this.tone(t,.16,180,60,.1*v,'sine');
+  },
+  crunch(wx,wy){
+    if(!this.ok())return; const v=this.at(wx,wy); if(v<.03)return;
+    const t=this.ctx.currentTime;
+    this.noise(t,.05,3400,900,.26*v,3);
+    this.noise(t+.045,.07,1800,300,.2*v,2.2);
+  },
+  zap(wx,wy){
+    if(!this.ok())return; const v=this.at(wx,wy); if(v<.03)return;
+    const t=this.ctx.currentTime;
+    this.tone(t,.06,rnd(1900,900),rnd(600,180),.09*v,'square');
+    this.noise(t,.05,5200,1800,.08*v,1.2);
+  },
+  /* stylised cartoon yelp: a formant-filtered saw with vibrato */
+  scream(wx,wy,intensity,pitch){
+    if(!this.ok())return; const v=this.at(wx,wy)*clamp(intensity,.2,1); if(v<.04)return;
+    const t=this.ctx.currentTime, dur=rnd(.5,.26);
+    const o=this.ctx.createOscillator(); o.type='sawtooth';
+    const base=330*(pitch||1);
+    o.frequency.setValueAtTime(base*rnd(1.25,.95),t);
+    o.frequency.linearRampToValueAtTime(base*rnd(1.7,1.1),t+dur*.3);
+    o.frequency.exponentialRampToValueAtTime(base*.7,t+dur);
+    const vib=this.ctx.createOscillator(); vib.type='sine'; vib.frequency.value=rnd(13,7);
+    const vibG=this.ctx.createGain(); vibG.gain.value=base*.07;
+    vib.connect(vibG); vibG.connect(o.frequency);
+    const f=this.ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=920; f.Q.value=2.2;
+    o.connect(f);
+    this.env(f,t,.03,dur,.16*v);
+    o.start(t); vib.start(t); o.stop(t+dur+.1); vib.stop(t+dur+.1);
+  },
+  death(wx,wy){
+    if(!this.ok())return; const v=this.at(wx,wy); if(v<.04)return;
+    const t=this.ctx.currentTime;
+    this.tone(t,.5,220,60,.1*v,'sawtooth');
+    this.noise(t+.1,.3,600,120,.07*v,1.1);
+  },
+  beamHum(on){
+    if(!this.ok())return;
+    if(on&&!this.beamNode){
+      const o=this.ctx.createOscillator(); o.type='sawtooth'; o.frequency.value=180;
+      const o2=this.ctx.createOscillator(); o2.type='square'; o2.frequency.value=362;
+      const g=this.ctx.createGain(); g.gain.value=0;
+      o.connect(g); o2.connect(g); g.connect(this.master);
+      o.start(); o2.start(); g.gain.linearRampToValueAtTime(.05,this.ctx.currentTime+.05);
+      this.beamNode={o,o2,g};
+    } else if(!on&&this.beamNode){
+      const {o,o2,g}=this.beamNode; this.beamNode=null;
+      g.gain.linearRampToValueAtTime(0,this.ctx.currentTime+.08);
+      setTimeout(()=>{ try{o.stop();o2.stop();}catch(e){} },200);
+    }
+  },
   // rain bed
   rainNode:null,
   rain(on){
@@ -389,7 +463,8 @@ const Audio2={
 /* solid: blocks movement · powder: falls · liquid: flows
    dark: light absorbed per tile · light: emission · hard: dig resistance   */
 const AIR=0,DIRT=1,GRASS=2,STONE=3,SAND=4,WOOD=5,LEAF=6,GLASS=7,ICE=8,
-      RUBBER=9,CLOUD=10,GOLD=11,WATER=12,LAVA=13,TORCH=14,FIRE=15,SNOW=16;
+      RUBBER=9,CLOUD=10,GOLD=11,WATER=12,LAVA=13,TORCH=14,FIRE=15,SNOW=16,
+      BLOOD=17,ACID=18,SPIKE=19;
 
 const MAT=[];
 function mat(id,o){ MAT[id]=Object.assign({id,name:'?',col:'#f0f',solid:false,powder:false,liquid:false,
@@ -412,16 +487,20 @@ mat(LAVA  ,{name:'Lava',   col:'#e85a1c',liquid:true,dark:0,light:11,alpha:.92,v
 mat(TORCH ,{name:'Torch',  col:'#ffca5e',light:10,dark:0});
 mat(FIRE  ,{name:'Fire',   col:'#ff8a2b',light:9,dark:0,hot:1});
 mat(SNOW  ,{name:'Snow',   col:'#dde8f2',solid:true,powder:true,speck:'#f4f9ff',fric:.82,ground:1});
+mat(BLOOD ,{name:'Blood',  col:'#8e1018',liquid:true,dark:2,alpha:.9,visc:2,gore:1});
+mat(ACID  ,{name:'Acid',   col:'#86d820',liquid:true,dark:1,alpha:.82,visc:2,light:3,acid:1});
+mat(SPIKE ,{name:'Spikes', col:'#9aa6b2',solid:true,speck:'#c6d3df',hard:2,spike:1,dark:1});
 
 const isSolid =m=>MAT[m].solid;
 const isLiquid=m=>MAT[m].liquid;
 const isAir   =m=>m===AIR;
 
 /* palette shown for the BUILD tool */
-const PALETTE=[DIRT,GRASS,STONE,SAND,WOOD,LEAF,GLASS,ICE,RUBBER,CLOUD,GOLD,SNOW,WATER,LAVA,TORCH,FIRE];
+const PALETTE=[DIRT,GRASS,STONE,SAND,WOOD,LEAF,GLASS,ICE,RUBBER,CLOUD,GOLD,SNOW,SPIKE,WATER,LAVA,ACID,BLOOD,TORCH,FIRE];
 
 /* palette shown for the SPAWN tool */
 const SPAWNABLES=[
+  {key:'human',   name:'Human',  col:'#e8b38c'},
   {key:'ball',    name:'Ball',   col:'#ff7043'},
   {key:'crate',   name:'Crate',  col:'#9d7b46'},
   {key:'balloon', name:'Balloon',col:'#e05c9a'},
@@ -437,6 +516,7 @@ const CH=32;                 // chunk size in tiles
 
 const tiles=new Uint8Array(WW*WH);
 const vary =new Uint8Array(WW*WH);   // per-tile texture variant / fire fuel
+const stain=new Uint8Array(WW*WH);   // how much blood has dried on this tile
 const ti=(x,y)=>y*WW+x;
 const inb=(x,y)=>x>=0&&y>=0&&x<WW&&y<WH;
 const get=(x,y)=>inb(x,y)?tiles[ti(x,y)]:STONE;       // out of bounds reads as wall
@@ -476,11 +556,24 @@ function dirtyAt(x,y){
   markTile(x,y); markTile(x-1,y); markTile(x+1,y); markTile(x,y-1); markTile(x,y+1);
 }
 
+/* splash blood onto a tile; it stays there until the tile itself is gone */
+function addStain(x,y,amount){
+  if(!inb(x,y)) return;
+  const i=ti(x,y);
+  if(tiles[i]===AIR||MAT[tiles[i]].liquid) return;
+  const v=stain[i]+amount;
+  const nv=v>250?250:v;
+  if(nv-stain[i]>6||stain[i]===0){ stain[i]=nv; dirtyAt(x,y); }
+  else stain[i]=nv;
+}
+function stainPx(px,py,amount){ addStain((px/TS)|0,(py/TS)|0,amount); }
+
 function setTile(x,y,m,quiet){
   if(!inb(x,y)) return false;
   const i=ti(x,y);
   const old=tiles[i];
   if(old===m) return false;
+  if(m===AIR) stain[i]=0;        // the blood went with the block
   tiles[i]=m;
   vary[i]=m===FIRE?(60+rndi(90)):rndi(4);
   dirtyAt(x,y);
@@ -617,6 +710,7 @@ function generate(seedStr){
 }
 
 function afterWorldChange(){
+  stain.fill(0);
   recomputeAllCols();
   chunkCache.clear(); chunkDirty.clear();
   actFlag.fill(0); actList.length=0; actNext.length=0;
@@ -652,6 +746,7 @@ function swapTiles(x1,y1,x2,y2){
   const i1=ti(x1,y1), i2=ti(x2,y2);
   const a=tiles[i1], b=tiles[i2];
   tiles[i1]=b; tiles[i2]=a;
+  const st=stain[i1]; stain[i1]=stain[i2]; stain[i2]=st;
   const v=vary[i1]; vary[i1]=vary[i2]; vary[i2]=v;
   dirtyAt(x1,y1); dirtyAt(x2,y2);
   wakeArea(x1,y1); wakeArea(x2,y2);
@@ -681,6 +776,18 @@ function stepSim(){
     if(m===GRASS||m===DIRT){ stepSoil(x,y,i,m); continue; }
 
     if(M.liquid){
+      if(M.acid&&acidBite(x,y)) continue;
+      if(m===BLOOD&&!canFlow(x,y,m)&&Math.random()<.0006){
+        setTile(x,y,AIR);                 // dries into the surface below
+        addStain(x,y+1,70); addStain(x+1,y,22); addStain(x-1,y,22);
+        continue;
+      }
+      if(m===BLOOD&&(getSafe(x,y-1)===LAVA||getSafe(x,y+1)===LAVA)){
+        setTile(x,y,AIR);
+        for(let k=0;k<4;k++) puff(x*TS+8,y*TS+8,'#6b4a44',rnd(20,-20),rnd(-20,-50),.7);
+        Audio2.fizz(x*TS,y*TS);
+        continue;
+      }
       if(m===LAVA){
         if(lavaReact(x,y)) continue;        // became stone / lit something
         if(tiles[i]!==m) continue;
@@ -696,6 +803,25 @@ function stepSim(){
   }
   // anything past the budget gets another chance next tick
   for(let n=budget;n<actList.length;n++) actNext.push(actList[n]); // flag is still set
+}
+
+/* acid dissolves soft ground and anything organic it touches */
+const ACID_PROOF={[STONE]:1,[GOLD]:1,[GLASS]:1,[SPIKE]:1};
+function acidBite(x,y){
+  for(let k=0;k<4;k++){
+    const nx=x+[1,-1,0,0][k], ny=y+[0,0,1,-1][k];
+    if(!inb(nx,ny)) continue;
+    const n=tiles[ti(nx,ny)];
+    if(n===AIR||MAT[n].liquid) continue;
+    if(ACID_PROOF[n]) continue;
+    if(Math.random()<.055){
+      setTile(nx,ny,AIR);
+      for(let q=0;q<3;q++) puff(nx*TS+8,ny*TS+8,'#b6f03a',rnd(24,-24),rnd(-14,-44),.6);
+      Audio2.fizz(nx*TS,ny*TS);
+      if(Math.random()<.5){ setTile(x,y,AIR); return true; }   // spent
+    }
+  }
+  return false;
 }
 
 /* is there anywhere for this liquid to move right now? */
@@ -857,6 +983,425 @@ function floodLight(buf,qt){
   }
   return qt;
 }
+/* ---------- ragdoll rendering ------------------------------------------- */
+function charTint(col,char,gore){
+  let c=col;
+  if(gore>0) c=mixHex(c,'#6d0b11',clamp(gore,0,.55));
+  if(char>0) c=mixHex(c,'#20160f',clamp(char,0,.92));
+  return c;
+}
+function limbBase(r,kind){
+  if(kind==='neck'||kind==='farm') return r.skin;
+  if(kind==='spine'||kind==='uarm') return r.shirt;
+  return r.pants;
+}
+
+function drawRagdolls(){
+  const z=cam.z;
+  for(const r of ragdolls){
+    const pts=r.pts;
+    // is any of this on screen?
+    const c=pts[P_CHEST];
+    const csx=worldToScreenX(c.x), csy=worldToScreenY(c.y);
+    if(csx<-160||csy<-160||csx>view.w+160||csy>view.h+160) continue;
+
+    ctx.save();
+    ctx.lineCap='round'; ctx.lineJoin='round';
+
+    // limbs
+    for(const l of r.links){
+      if(l.cut) continue;
+      const a=pts[l.a], b=pts[l.b];
+      if(a.gone||b.gone) continue;
+      const melt=(a.melt+b.melt)/2;
+      const w=Math.max(1.1,l.w-melt*0.8)*z;
+      ctx.strokeStyle=charTint(limbBase(r,l.kind),(a.char+b.char)/2,r.gore*0.5+(a.bleed+b.bleed)*0.18);
+      ctx.lineWidth=w;
+      ctx.beginPath();
+      ctx.moveTo(worldToScreenX(a.x),worldToScreenY(a.y));
+      ctx.lineTo(worldToScreenX(b.x),worldToScreenY(b.y));
+      ctx.stroke();
+      // a seam of light along the top of the torso
+      if(l.kind==='spine'){
+        ctx.strokeStyle='rgba(255,255,255,.10)'; ctx.lineWidth=w*.5;
+        ctx.stroke();
+      }
+    }
+
+    // hands, feet, joints
+    for(const p of pts){
+      if(p.gone) continue;
+      const sx=worldToScreenX(p.x), sy=worldToScreenY(p.y);
+      if(p.part==='hand'||p.part==='foot'){
+        ctx.fillStyle=charTint(p.part==='hand'?r.skin:'#22262b',p.char,r.gore*0.4);
+        ctx.beginPath(); ctx.arc(sx,sy,(p.part==='hand'?2.2:2.6)*z,0,TAU); ctx.fill();
+      }
+    }
+
+    // head
+    const h=pts[P_HEAD];
+    if(!h.gone){
+      const hx=worldToScreenX(h.x), hy=worldToScreenY(h.y);
+      const hr=Math.max(1.2,h.r-h.melt*0.6)*z;
+      ctx.fillStyle=charTint(r.skin,h.char,r.gore*0.5+h.bleed*0.25);
+      ctx.beginPath(); ctx.arc(hx,hy,hr,0,TAU); ctx.fill();
+      // hair
+      ctx.fillStyle=charTint('#2b2119',h.char,0);
+      ctx.beginPath(); ctx.arc(hx,hy-hr*0.34,hr*0.94,Math.PI,TAU); ctx.fill();
+      // face
+      const dead=!r.alive;
+      ctx.strokeStyle=charTint('#191014',h.char,0);
+      ctx.lineWidth=Math.max(1,0.7*z);
+      const ex=hr*0.36, ey=-hr*0.06;
+      if(dead){
+        for(const sgn of [-1,1]){
+          ctx.beginPath();
+          ctx.moveTo(hx+sgn*ex-1.4*z,hy+ey-1.4*z); ctx.lineTo(hx+sgn*ex+1.4*z,hy+ey+1.4*z);
+          ctx.moveTo(hx+sgn*ex+1.4*z,hy+ey-1.4*z); ctx.lineTo(hx+sgn*ex-1.4*z,hy+ey+1.4*z);
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle=charTint('#191014',h.char,0);
+        for(const sgn of [-1,1]){
+          ctx.beginPath(); ctx.arc(hx+sgn*ex,hy+ey,Math.max(.9,hr*0.15),0,TAU); ctx.fill();
+        }
+      }
+      // mouth: open while screaming or burning
+      const open=(r.screamT>0?1:0)||(r.burning>0?.7:0);
+      ctx.fillStyle='#37151a';
+      if(open>0){
+        ctx.beginPath(); ctx.ellipse(hx,hy+hr*0.42,hr*0.3,hr*0.34*open+hr*0.08,0,0,TAU); ctx.fill();
+      } else if(dead){
+        ctx.fillRect(hx-hr*0.26,hy+hr*0.42,hr*0.52,Math.max(1,0.9*z));
+      }
+    }
+
+    // stumps where something came off
+    for(const l of r.links){
+      if(!l.cut) continue;
+      for(const idx of [l.a,l.b]){
+        const p=pts[idx];
+        if(p.gone||!p.wound) continue;
+        const sx=worldToScreenX(p.x), sy=worldToScreenY(p.y);
+        ctx.fillStyle='#5e0409';
+        ctx.beginPath(); ctx.arc(sx,sy,l.w*0.5*z,0,TAU); ctx.fill();
+        ctx.fillStyle='#a3161c';
+        ctx.beginPath(); ctx.arc(sx,sy,l.w*0.3*z,0,TAU); ctx.fill();
+        // dangling strands
+        ctx.strokeStyle='#7a0c13'; ctx.lineWidth=Math.max(.8,0.55*z);
+        for(let k=0;k<2;k++){
+          const a=r.t*1.6+k*2.1;
+          ctx.beginPath();
+          ctx.moveTo(sx,sy);
+          ctx.quadraticCurveTo(sx+Math.cos(a)*2.4*z,sy+2.2*z,sx+Math.sin(a)*1.6*z,sy+4.4*z);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // arcs of electricity
+    if(r.shock>0){
+      ctx.strokeStyle='rgba(150,220,255,.9)';
+      ctx.lineWidth=Math.max(1,0.7*z);
+      for(let k=0;k<3;k++){
+        const a=pts[rndi(pts.length)], b=pts[rndi(pts.length)];
+        if(a.gone||b.gone||a===b) continue;
+        ctx.beginPath();
+        const ax=worldToScreenX(a.x), ay=worldToScreenY(a.y);
+        const bx=worldToScreenX(b.x), by=worldToScreenY(b.y);
+        ctx.moveTo(ax,ay);
+        for(let seg=1;seg<4;seg++){
+          ctx.lineTo(lerp(ax,bx,seg/4)+rnd(6,-6),lerp(ay,by,seg/4)+rnd(6,-6));
+        }
+        ctx.lineTo(bx,by); ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // vitals: only while there is something left to lose
+    if(r.alive&&(r.blood<99||r.pain>0.1)){
+      const hx=worldToScreenX(h.gone?c.x:h.x), hy=worldToScreenY((h.gone?c.y:h.y))-16*z;
+      const w=22*z;
+      ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(hx-w/2,hy,w,3.2);
+      ctx.fillStyle=r.blood>45?'#7fe08a':'#ff5f5f';
+      ctx.fillRect(hx-w/2,hy,w*clamp(r.blood/100,0,1),3.2);
+      if(r.burning>0){ ctx.fillStyle='#ffb03a'; ctx.fillRect(hx-w/2,hy-4,w*clamp(r.burning/3,0,1),2); }
+    }
+  }
+}
+
+/* ---------- weapons ----------------------------------------------------- */
+const WEAPONS=[
+  {key:'pistol', name:'Pistol', kind:'gun',  rof:.19, dmg:27, pellets:1, spread:.02, speed:900, kick:80,  sfx:'pistol', col:'#c9d4dc'},
+  {key:'smg',    name:'SMG',    kind:'gun',  rof:.075,dmg:15, pellets:1, spread:.065,speed:850, kick:36,  sfx:'smg',    col:'#8b98a4'},
+  {key:'shotgun',name:'Shotgun',kind:'gun',  rof:.82, dmg:18, pellets:8, spread:.17, speed:780, kick:240, sfx:'shotgun',col:'#b0872f'},
+  {key:'laser',  name:'Laser',  kind:'beam', dps:105, col:'#ff4a32'},
+  {key:'flame',  name:'Flame',  kind:'flame',col:'#ff8a2b'},
+  {key:'blade',  name:'Blade',  kind:'melee',col:'#e6eef5'},
+  {key:'taser',  name:'Taser',  kind:'touch',col:'#6fd0ff'},
+  {key:'acid',   name:'Acid',   kind:'touch',col:'#86d820'},
+  {key:'nade',   name:'Grenade',kind:'lob',  rof:.75, col:'#d23b2f'}
+];
+let weapSel=0;
+let fireCd=0, beamOn=false, beamPt=null, muzzle=0;
+
+const bullets=[];
+function applyRagImpulse(p,ix,iy){ p.ox-=ix/60; p.oy-=iy/60; }
+
+function weaponOrigin(){
+  return {x:player.x,y:player.y-3};
+}
+function fireWeapon(wx,wy,firstTouch,prevx,prevy){
+  const W=WEAPONS[weapSel];
+  const o=weaponOrigin();
+  const ang=Math.atan2(wy-o.y,wx-o.x);
+  player.aim=ang;
+  player.face=Math.cos(ang)>=0?1:-1;
+
+  if(W.kind==='gun'){
+    if(fireCd>0) return;
+    fireCd=W.rof;
+    muzzle=1;
+    for(let i=0;i<W.pellets;i++){
+      const a=ang+rnd(W.spread,-W.spread)*(Math.random()<.5?1:-1);
+      bullets.push({x:o.x+Math.cos(ang)*8,y:o.y+Math.sin(ang)*8,
+        vx:Math.cos(a)*W.speed*rnd(1.06,.94),vy:Math.sin(a)*W.speed*rnd(1.06,.94),
+        dmg:W.dmg,life:1.6,trail:[]});
+    }
+    player.vx-=Math.cos(ang)*W.kick*0.5;
+    player.vy-=Math.sin(ang)*W.kick*0.18;
+    Audio2.gun(o.x,o.y,W.sfx);
+    for(let i=0;i<4;i++) puff(o.x+Math.cos(ang)*9,o.y+Math.sin(ang)*9,'#ffd88a',
+      Math.cos(ang)*rnd(190,60)+rnd(40,-40),Math.sin(ang)*rnd(190,60)+rnd(20,-50),.22,2.4);
+    return;
+  }
+  if(W.kind==='beam'){
+    beamOn=true; beamPt={x:wx,y:wy};
+    return;
+  }
+  if(W.kind==='flame'){
+    for(let i=0;i<3;i++){
+      const a=ang+rnd(.18,-.18);
+      const sp=rnd(320,190);
+      particles.push({x:o.x+Math.cos(ang)*8,y:o.y+Math.sin(ang)*8,
+        vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-20,
+        col:Math.random()<.5?'#ffb03a':'#ff6a1e',life:.5,max:.5,size:rnd(6,3),grav:-60,flame:1});
+    }
+    // reach out and light up whatever is in the cone
+    for(const r of ragdolls){
+      for(const p of r.pts){
+        if(p.gone) continue;
+        const d=Math.hypot(p.x-o.x,p.y-o.y);
+        if(d>72) continue;
+        const pa=Math.atan2(p.y-o.y,p.x-o.x);
+        if(Math.abs(((pa-ang+Math.PI*3)%TAU)-Math.PI)<.34){ igniteRag(r,.09); damagePoint(r,p,.5,'burn'); }
+      }
+    }
+    const fx=o.x+Math.cos(ang)*rnd(64,20), fy=o.y+Math.sin(ang)*rnd(64,20);
+    const ftx=(fx/TS)|0, fty=(fy/TS)|0;
+    if(MAT[getSafe(ftx,fty)].flam&&Math.random()<.25) setTile(ftx,fty,FIRE);
+    if(getSafe(ftx,fty)===AIR&&Math.random()<.05) setTile(ftx,fty,FIRE);
+    if(Math.random()<.2) Audio2.fizz(o.x,o.y);
+    return;
+  }
+  if(W.kind==='lob'){
+    if(fireCd>0) return;
+    fireCd=W.rof;
+    const d=Math.hypot(wx-o.x,wy-o.y);
+    const p=spawnProp('tnt',o.x+Math.cos(ang)*10,o.y+Math.sin(ang)*10);
+    p.fuse=1.7;
+    p.vx=Math.cos(ang)*clamp(d*2.4,120,520);
+    p.vy=Math.sin(ang)*clamp(d*2.4,120,520)-90;
+    Audio2.place(o.x,o.y);
+    return;
+  }
+  if(W.kind==='melee'){
+    // slice along the drag: anything crossing the stroke comes apart
+    if(prevx===undefined){ prevx=wx; prevy=wy; }
+    const len=Math.hypot(wx-prevx,wy-prevy);
+    for(const r of ragdolls){
+      for(const l of r.links){
+        if(l.cut) continue;
+        const a=r.pts[l.a], b=r.pts[l.b];
+        if(a.gone||b.gone) continue;
+        if(segHit(prevx,prevy,wx,wy,a.x,a.y,b.x,b.y)&&(len>1.2||firstTouch)){
+          l.hp-=26;
+          if(l.hp<=0){ severLink(r,l,true); }
+          else {
+            const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+            bleedBurst({x:mx,y:my},5,'#8d0f16'); stainPx(mx,my,30);
+            damagePoint(r,a,7,'cut'); damagePoint(r,b,7,'cut');
+            Audio2.squelch(mx,my);
+          }
+        }
+      }
+    }
+    for(let i=props.length-1;i>=0;i--){
+      const p=props[i];
+      if(p.kind==='balloon'&&Math.hypot(p.x-wx,p.y-wy)<10) popProp(i);
+    }
+    return;
+  }
+  if(W.kind==='touch'){
+    if(W.key==='taser'){
+      const hit=hitPointAt(wx,wy,16);
+      if(hit){ shockRag(hit.r,.34); damagePoint(hit.r,hit.p,.7,'shock'); }
+      if(Math.random()<.4) Audio2.zap(wx,wy);
+      for(let i=0;i<2;i++) puff(wx,wy,'#9fdcff',rnd(70,-70),rnd(70,-70),.2,2);
+    } else {
+      const tx=(wx/TS)|0, ty=(wy/TS)|0;
+      if(getSafe(tx,ty)===AIR) setTile(tx,ty,ACID);
+      if(Math.random()<.5&&getSafe(tx,ty-1)===AIR) setTile(tx,ty-1,ACID);
+      const hit=hitPointAt(wx,wy,14);
+      if(hit){
+        hit.p.melt=Math.min(hit.p.r*0.92,hit.p.melt+.09);
+        damagePoint(hit.r,hit.p,1.4,'acid');
+        if(hit.p.melt>=hit.p.r*0.9) dissolvePoint(hit.r,hit.p);
+      }
+    }
+    return;
+  }
+}
+
+/* segment/segment intersection */
+function segHit(x1,y1,x2,y2,x3,y3,x4,y4){
+  const d=(x2-x1)*(y4-y3)-(y2-y1)*(x4-x3);
+  if(Math.abs(d)<1e-6) return false;
+  const t=((x3-x1)*(y4-y3)-(y3-y1)*(x4-x3))/d;
+  const u=((x3-x1)*(y2-y1)-(y3-y1)*(x2-x1))/d;
+  return t>=0&&t<=1&&u>=0&&u<=1;
+}
+
+function stepBullets(dt){
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    b.life-=dt;
+    if(b.life<=0){ bullets.splice(i,1); continue; }
+    const steps=Math.min(8,Math.ceil(Math.hypot(b.vx,b.vy)*dt/3));
+    const sdt=dt/steps;
+    let dead=false;
+    for(let s=0;s<steps&&!dead;s++){
+      b.x+=b.vx*sdt; b.y+=b.vy*sdt;
+      b.vy+=GRAVITY*0.22*sdt;
+      // flesh
+      const hit=hitPointAt(b.x,b.y,3.6);
+      if(hit){
+        const {r,p}=hit;
+        damagePoint(r,p,b.dmg,'bullet');
+        applyRagImpulse(p,b.vx*0.22,b.vy*0.22);
+        const a=Math.atan2(b.vy,b.vx);
+        for(let k=0;k<9;k++){
+          bleedDrop(p.x,p.y,Math.cos(a)*rnd(260,60)+rnd(70,-70),Math.sin(a)*rnd(260,60)+rnd(40,-80));
+        }
+        stainPx(p.x+Math.cos(a)*10,p.y+Math.sin(a)*10,40);
+        Audio2.squelch(p.x,p.y);
+        // a joint taking a big hit comes off
+        for(const l of r.links){
+          if(l.cut) continue;
+          if((l.a===p.i||l.b===p.i)&&b.dmg>=24&&Math.random()<.34){
+            l.hp-=b.dmg*0.9;
+            if(l.hp<=0) severLink(r,l,true);
+          }
+        }
+        dead=true; break;
+      }
+      // the player is fair game too
+      if(player.dead<=0&&Math.abs(b.x-player.x)<6&&Math.abs(b.y-player.y)<12){
+        hurtPlayer(b.dmg*0.8);
+        bleedBurst({x:b.x,y:b.y},7,'#8d0f16');
+        stainPx(b.x,b.y,30);
+        Audio2.squelch(b.x,b.y);
+        dead=true; break;
+      }
+      // props
+      for(const pr of props){
+        if(pr.kind==='gib') continue;
+        if(Math.abs(b.x-pr.x)<pr.w/2+2&&Math.abs(b.y-pr.y)<pr.h/2+2){
+          pr.vx+=b.vx*0.12; pr.vy+=b.vy*0.12;
+          if(pr.kind==='balloon'){ popProp(props.indexOf(pr)); }
+          if(pr.kind==='tnt') pr.fuse=Math.min(pr.fuse,.2);
+          dead=true; break;
+        }
+      }
+      if(dead) break;
+      // terrain
+      const tx=(b.x/TS)|0, ty=(b.y/TS)|0;
+      const m=getSafe(tx,ty);
+      if(isSolid(m)){
+        for(let k=0;k<4;k++) puff(b.x,b.y,MAT[m].col,rnd(90,-90),rnd(-30,-90),.3);
+        if(Math.random()<(MAT[m].hard>1?.16:.45)) setTile(tx,ty,AIR);   // chips away
+        Audio2.dig(b.x,b.y,m);
+        dead=true; break;
+      }
+    }
+    if(dead) bullets.splice(i,1);
+  }
+}
+
+function stepBeam(dt){
+  if(!beamOn||!beamPt){ Audio2.beamHum(false); return; }
+  Audio2.beamHum(true);
+  const o=weaponOrigin();
+  const ang=Math.atan2(beamPt.y-o.y,beamPt.x-o.x);
+  const W=WEAPONS[weapSel];
+  let x=o.x+Math.cos(ang)*8, y=o.y+Math.sin(ang)*8;
+  const step=3;
+  beamEnd={x,y};
+  for(let i=0;i<180;i++){
+    x+=Math.cos(ang)*step; y+=Math.sin(ang)*step;
+    beamEnd={x,y};
+    const hit=hitPointAt(x,y,4.2);
+    if(hit){
+      damagePoint(hit.r,hit.p,W.dps*dt,'laser');
+      hit.p.char=Math.min(1,hit.p.char+dt*1.6);
+      if(Math.random()<dt*24) puff(x,y,'#ff9a4a',rnd(50,-50),rnd(-40,-90),.4);
+      if(Math.random()<dt*10) bleedDrop(x,y,rnd(60,-60),rnd(-20,-70));
+      if(Math.random()<dt*3) igniteRag(hit.r,.2);
+      break;
+    }
+    const tx=(x/TS)|0, ty=(y/TS)|0;
+    const m=getSafe(tx,ty);
+    if(isSolid(m)){
+      if(Math.random()<dt*(MAT[m].hard>1?7:20)) setTile(tx,ty,MAT[m].flam&&Math.random()<.5?FIRE:AIR);
+      for(let k=0;k<2;k++) puff(x,y,'#ff9a4a',rnd(70,-70),rnd(-30,-90),.3);
+      break;
+    }
+    if(m===WATER&&Math.random()<dt*20){ setTile(tx,ty,AIR); puff(x,y,'#d8e4ec',rnd(20,-20),rnd(-30,-60),.7); }
+  }
+}
+let beamEnd=null;
+
+function drawWeaponFx(){
+  // bullet tracers
+  ctx.save();
+  ctx.strokeStyle='rgba(255,226,150,.9)';
+  ctx.lineWidth=Math.max(1,1.1*cam.z*.6);
+  for(const b of bullets){
+    const sx=worldToScreenX(b.x), sy=worldToScreenY(b.y);
+    const l=Math.hypot(b.vx,b.vy)*0.012*cam.z;
+    const a=Math.atan2(b.vy,b.vx);
+    ctx.beginPath();
+    ctx.moveTo(sx,sy);
+    ctx.lineTo(sx-Math.cos(a)*l*3,sy-Math.sin(a)*l*3);
+    ctx.stroke();
+  }
+  // laser
+  if(beamOn&&beamEnd){
+    const o=weaponOrigin();
+    const ox=worldToScreenX(o.x), oy=worldToScreenY(o.y);
+    const ex=worldToScreenX(beamEnd.x), ey=worldToScreenY(beamEnd.y);
+    ctx.globalCompositeOperation='lighter';
+    ctx.strokeStyle='rgba(255,70,50,.5)'; ctx.lineWidth=5*cam.z*.6;
+    ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.strokeStyle='rgba(255,240,220,.95)'; ctx.lineWidth=1.6*cam.z*.6;
+    ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.fillStyle='rgba(255,180,120,.8)';
+    ctx.beginPath(); ctx.arc(ex,ey,rnd(5,2)*cam.z*.6,0,TAU); ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+  }
+  ctx.restore();
+}
+
 /* ---------- camera / view ----------------------------------------------- */
 const cvs=document.getElementById('game');
 const ctx=cvs.getContext('2d');
@@ -924,6 +1469,26 @@ function buildAtlas(){
   }
 }
 
+/* four blood splatters, drawn once and stamped onto stained tiles */
+const splat=document.createElement('canvas');
+(function(){
+  splat.width=TS*4; splat.height=TS;
+  const g=splat.getContext('2d');
+  for(let v=0;v<4;v++){
+    const ox=v*TS;
+    for(let b=0;b<7;b++){
+      const bx=ox+h2(v,b,11)*TS, by=h2(v,b,23)*TS;
+      const r=1+h2(v,b,37)*3.4;
+      g.fillStyle=b%3===0?'#5e0409':'#8d0f16';
+      g.beginPath(); g.arc(bx,by,r,0,TAU); g.fill();
+    }
+    for(let d=0;d<5;d++){   // fine spatter dots
+      g.fillStyle='#6d070d';
+      g.fillRect(ox+((h2(v,d,53)*TS)|0),(h2(v,d,71)*TS)|0,1,1);
+    }
+  }
+})();
+
 /* deep rock gets darker with depth; precomputed per row */
 const CAVEBG=[];
 for(let y=0;y<WH;y++){
@@ -981,6 +1546,12 @@ function drawTile(g,cx,cy,wx,wy,fresh){
     return;
   }
   g.drawImage(atlas,vary[i]*TS,m*TS,TS,TS,px,py,TS,TS);
+  if(stain[i]>0&&!MAT[m].liquid){
+    g.save();
+    g.globalAlpha=Math.min(.78,stain[i]/250);
+    g.drawImage(splat,(vary[i]&3)*TS,0,TS,TS,px,py,TS,TS);
+    g.restore();
+  }
   // a bright meniscus makes a liquid surface legible at a glance
   if(MAT[m].liquid){
     const above=getSafe(wx,wy-1);
@@ -1227,7 +1798,35 @@ function stepParticles(dt){
     p.vy+=p.grav*dt;
     p.x+=p.vx*dt; p.y+=p.vy*dt;
     const tx=(p.x/TS)|0, ty=(p.y/TS)|0;
-    if(isSolid(get(tx,ty))){ p.vy*=-.32; p.vx*=.6; p.y-=p.vy*dt; }
+    const m=get(tx,ty);
+    if(p.blood){
+      // blood sticks where it lands, and enough of it starts to pool
+      if(isSolid(m)){
+        // fast drops can end up a tile or two inside rock: walk back along the
+        // path so the splatter lands on the surface that was actually hit
+        let sx=tx, sy=ty, bx=p.x, by=p.y;
+        const st=Math.hypot(p.vx,p.vy)||1;
+        const ux=p.vx/st*(TS*0.5), uy2=p.vy/st*(TS*0.5);
+        for(let back=0;back<4;back++){
+          const nx=((bx-ux)/TS)|0, ny=((by-uy2)/TS)|0;
+          if(!isSolid(getSafe(nx,ny))){
+            if(getSafe(nx,ny)===AIR&&Math.random()<.19) setTile(nx,ny,BLOOD);
+            break;
+          }
+          bx-=ux; by-=uy2; sx=nx; sy=ny;
+        }
+        addStain(sx,sy,10+p.size*3);
+        particles.splice(i,1); continue;
+      }
+      if(m===LAVA||m===FIRE){ particles.splice(i,1); puff(p.x,p.y,'#6b4a44',0,-20,.5); continue; }
+      continue;
+    }
+    if(p.flame){
+      if(MAT[m].flam&&Math.random()<.14) setTile(tx,ty,FIRE);
+      if(isSolid(m)){ particles.splice(i,1); continue; }
+      continue;
+    }
+    if(isSolid(m)){ p.vy*=-.32; p.vx*=.6; p.y-=p.vy*dt; }
   }
 }
 function drawParticles(){
@@ -1418,6 +2017,10 @@ function stepPlayer(dt){
   }
 
   // hazards
+  if(MAT[matAtPx(player.x,player.y+player.h/2+1)].spike&&player.onGround){
+    hurtPlayer(52*dt);
+    if(Math.random()<dt*10){ bleedBurst({x:player.x,y:player.y+8},3,'#8d0f16'); stainPx(player.x,player.y+10,24); }
+  }
   const m=matAtPx(player.x,player.y);
   if(m===LAVA||matAtPx(player.x,player.y-6)===FIRE||m===FIRE){
     hurtPlayer(m===LAVA?140*dt:34*dt);
@@ -1428,6 +2031,17 @@ function stepPlayer(dt){
   player.anim+=Math.abs(player.vx)*dt*0.09+ (player.onGround?0:dt*2);
   player.flash=Math.max(0,player.flash-dt*3);
 
+  // shove people out of the way
+  for(const rg of ragdolls){
+    for(const p of rg.pts){
+      if(p.gone||p.grabbed||p.pin) continue;
+      const dx=p.x-player.x, dy=p.y-player.y;
+      if(Math.abs(dx)<p.r+player.w/2&&Math.abs(dy)<p.r+player.h/2){
+        const push=Math.sign(dx||1)*0.9;
+        p.x+=push; p.ox-=push*0.4;
+      }
+    }
+  }
   // shove props out of the way
   for(const p of props){
     const dx=p.x-player.x, dy=p.y-player.y;
@@ -1441,10 +2055,15 @@ function stepPlayer(dt){
 function hurtPlayer(d){
   player.hp-=d; player.flash=1;
   if(player.hp<=0&&player.dead<=0){
-    player.dead=1.2;
+    player.dead=1.6;
     Audio2.hurt();
-    burst(player.x,player.y,'#ff5f5f',26,190,.9);
-    toast('OUCH');
+    // leave a body behind, thrown the way you were going
+    const corpse=spawnRagdoll(player.x,player.y-4,{dead:true,shirt:'#4ec9ff',vx:player.vx,vy:player.vy-60});
+    for(const p of corpse.pts){ p.bleed=0.5; p.char=player.flash>0?0.35:0; }
+    bleedBurst({x:player.x,y:player.y},18,'#8d0f16');
+    stainPx(player.x,player.y+8,90);
+    Audio2.squelch(player.x,player.y);
+    toast('YOU DIED');
   }
 }
 
@@ -1500,6 +2119,42 @@ function drawPlayer(){
   ctx.fillRect(2.1,-11.1,1.5,1.5);                                  // eye
   ctx.restore();
 
+  // whatever is being aimed, drawn in screen space along the aim line
+  if(tool==='weapon'){
+    const W=WEAPONS[weapSel];
+    const a=player.aim||0;
+    const ox=sx+Math.cos(a)*4*z, oy=sy+Math.sin(a)*4*z-2*z;
+    ctx.save();
+    ctx.translate(ox,oy); ctx.rotate(a);
+    ctx.fillStyle='#2b333b';
+    if(W.kind==='gun'){
+      const len=(W.key==='shotgun'?13:(W.key==='smg'?10:8))*z*.55;
+      ctx.fillRect(0,-1.3*z*.55,len,2.6*z*.55);
+      ctx.fillRect(-1.5*z*.55,-1*z*.55,3*z*.55,4*z*.55);
+    } else if(W.kind==='beam'){
+      ctx.fillStyle='#3a2b38'; ctx.fillRect(0,-1.6*z*.55,9*z*.55,3.2*z*.55);
+      ctx.fillStyle='#ff4a32'; ctx.fillRect(8*z*.55,-1*z*.55,1.6*z*.55,2*z*.55);
+    } else if(W.kind==='flame'){
+      ctx.fillStyle='#4a3a2b'; ctx.fillRect(0,-1.8*z*.55,10*z*.55,3.6*z*.55);
+    } else if(W.kind==='lob'){
+      ctx.fillStyle='#d23b2f'; ctx.beginPath(); ctx.arc(3*z*.55,0,2.2*z*.55,0,TAU); ctx.fill();
+    } else {
+      ctx.fillStyle=W.col; ctx.fillRect(0,-.9*z*.55,7*z*.55,1.8*z*.55);
+    }
+    ctx.restore();
+    if(muzzle>0){
+      ctx.save();
+      ctx.globalCompositeOperation='lighter';
+      const mx=ox+Math.cos(a)*9*z*.55, my=oy+Math.sin(a)*9*z*.55;
+      const g=ctx.createRadialGradient(mx,my,0,mx,my,16*z*.55*muzzle);
+      g.addColorStop(0,'rgba(255,240,190,'+(.9*muzzle)+')');
+      g.addColorStop(1,'rgba(255,140,40,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(mx,my,16*z*.55*muzzle,0,TAU); ctx.fill();
+      ctx.restore();
+    }
+  }
+
   // health pip when hurt
   if(player.hp<99){
     const w=26*z*0.6;
@@ -1512,7 +2167,7 @@ function drawPlayer(){
 
 /* ---------- props ------------------------------------------------------- */
 const props=[];
-const MAXPROPS=90;
+const MAXPROPS=130;
 
 function spawnProp(kind,x,y){
   if(props.length>=MAXPROPS) props.shift();
@@ -1549,7 +2204,24 @@ function stepProps(dt){
         Audio2.splash(p.x,p.y);
         for(let k=0;k<8;k++) puff(p.x,p.y,'#9ddcff',rnd(60,-60),rnd(-20,-90),.5);
       }
-      if(p.landSpeed>240){ Audio2.thud(p.x,p.y,p.landSpeed/700); }
+      if(p.landSpeed>240){
+        if(p.kind==='gib'){ Audio2.squelch(p.x,p.y); stainPx(p.x,p.y+p.h/2,60); }
+        else Audio2.thud(p.x,p.y,p.landSpeed/700);
+      }
+      if(p.kind==='gib'&&p.life>44){
+        // long-dead gore soaks away, leaving the stain behind
+        stainPx(p.x,p.y+p.h/2,40);
+        props.splice(i,1);
+        continue;
+      }
+      if(p.kind==='gib'){
+        // wet things leave a mess behind them
+        if(p.wet>0&&(Math.abs(p.vx)+Math.abs(p.vy))>30&&Math.random()<dt*14){
+          bleedDrop(p.x,p.y,rnd(20,-20),rnd(10,-30));
+          p.wet-=dt*0.05;
+        }
+        if(p.onGround&&Math.random()<dt*4) stainPx(p.x,p.y+p.h/2+1,10);
+      }
     }
 
     p.spin+=p.vx*dt*0.04;
@@ -1573,11 +2245,34 @@ function stepProps(dt){
     }
     if(m===FIRE&&p.kind==='tnt') p.fuse=Math.min(p.fuse,.3);
   }
+  // heavy things landing on people hurt: push the point out and bruise it
+  for(const pr of props){
+    if(pr.kind==='gib'||pr.kind==='balloon') continue;
+    const rad=Math.max(pr.w,pr.h)*0.55;
+    for(const r of ragdolls){
+      for(const p of r.pts){
+        if(p.gone) continue;
+        const dx=p.x-pr.x, dy=p.y-pr.y;
+        const d=Math.hypot(dx,dy);
+        if(d>rad+p.r||d<0.01) continue;
+        const push=(rad+p.r-d)/d;
+        p.x+=dx*push*0.6; p.y+=dy*push*0.6;
+        const rel=Math.hypot(pr.vx,pr.vy);
+        if(rel>150){
+          damagePoint(r,p,rel*0.035,'impact');
+          pr.vx*=0.7; pr.vy*=0.7;
+          if(Math.random()<.4){ bleedBurst(p,3,'#8d0f16'); stainPx(p.x,p.y,18); }
+        }
+      }
+    }
+  }
   // prop vs prop: cheap circular separation
   for(let a=0;a<props.length;a++){
     const A=props[a];
+    const aGib=A.kind==='gib';
     for(let b=a+1;b<props.length;b++){
       const B=props[b];
+      if(aGib&&B.kind==='gib') continue;   // loose gore can overlap freely
       const dx=B.x-A.x, dy=B.y-A.y;
       const rad=(A.w+B.w)*0.28+(A.h+B.h)*0.22;
       const d2=dx*dx+dy*dy;
@@ -1649,6 +2344,51 @@ function drawProps(){
       const f=Math.sign(p.vx)||1;
       ctx.beginPath(); ctx.arc(f*2.2,-1.6,1.3,0,TAU); ctx.fill();
       ctx.beginPath(); ctx.arc(f*-1.2,-1.8,1.1,0,TAU); ctx.fill();
+    } else if(p.kind==='gib'){
+      const t=p.gib;
+      if(t==='bone'){
+        ctx.fillStyle='#e8ddc8';
+        ctx.fillRect(-p.w/2,-1.4,p.w,2.8);
+        ctx.beginPath(); ctx.arc(-p.w/2,0,1.9,0,TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.w/2,0,1.9,0,TAU); ctx.fill();
+        ctx.fillStyle='rgba(140,20,26,.5)'; ctx.fillRect(-p.w/2,-1.4,p.w*.45,2.8);
+      } else if(t==='skull'){
+        ctx.fillStyle='#e8ddc8';
+        ctx.beginPath(); ctx.arc(0,-.6,p.w/2,0,TAU); ctx.fill();
+        ctx.fillRect(-p.w*.28,p.h*.18,p.w*.56,p.h*.26);
+        ctx.fillStyle='#2a201a';
+        ctx.beginPath(); ctx.arc(-p.w*.19,-.8,1.5,0,TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.w*.19,-.8,1.5,0,TAU); ctx.fill();
+        ctx.fillStyle='rgba(140,20,26,.45)';
+        ctx.beginPath(); ctx.arc(0,p.h*.34,p.w*.3,0,Math.PI); ctx.fill();
+      } else if(t==='gut'){
+        ctx.strokeStyle='#b8636b'; ctx.lineWidth=2.6; ctx.lineCap='round';
+        ctx.beginPath();
+        ctx.moveTo(-p.w/2,0);
+        ctx.quadraticCurveTo(-1,-3.4,1,0);
+        ctx.quadraticCurveTo(3,3.4,p.w/2,-.6);
+        ctx.stroke();
+        ctx.strokeStyle='rgba(109,16,24,.55)'; ctx.lineWidth=1.1; ctx.stroke();
+      } else if(t==='organ'){
+        ctx.fillStyle='#6d1018';
+        ctx.beginPath(); ctx.ellipse(0,0,p.w/2,p.h/2*.9,0,0,TAU); ctx.fill();
+        ctx.fillStyle='#a3313a';
+        ctx.beginPath(); ctx.ellipse(-p.w*.12,-p.h*.12,p.w*.3,p.h*.26,0,0,TAU); ctx.fill();
+        ctx.strokeStyle='#6d1018'; ctx.lineWidth=.8;
+        ctx.beginPath(); ctx.moveTo(-1.6,-1.6); ctx.quadraticCurveTo(0,0,1.8,1.4); ctx.stroke();
+      } else {
+        // flesh: an irregular wet lump
+        ctx.fillStyle='#a3161c';
+        ctx.beginPath();
+        for(let k=0;k<6;k++){
+          const a=k/6*TAU, rr=p.w/2*(0.62+h2(k,(p.x|0),3)*0.7);
+          const xx=Math.cos(a)*rr, yy=Math.sin(a)*rr;
+          if(k===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle='rgba(255,140,150,.35)';
+        ctx.beginPath(); ctx.arc(-p.w*.14,-p.h*.14,p.w*.2,0,TAU); ctx.fill();
+      }
     } else if(p.kind==='tnt'){
       ctx.fillStyle=p.col; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);
       ctx.fillStyle='#f4ead6'; ctx.fillRect(-p.w/2,-2.2,p.w,4.4);
@@ -1662,6 +2402,513 @@ function drawProps(){
     }
     ctx.restore();
   }
+}
+
+/* ---------- ragdolls ----------------------------------------------------
+   Verlet point masses joined by distance constraints. Joints carry their own
+   health, so a limb can be shot off, torn off, burned through or melted, and
+   whatever is still linked to it flies away as one piece.
+   ----------------------------------------------------------------------- */
+const ragdolls=[];
+const MAXRAG=12;
+let bodyCount=0;
+
+const P_HEAD=0,P_CHEST=1,P_PELV=2,P_LELB=3,P_LHAND=4,P_RELB=5,P_RHAND=6,
+      P_LKNEE=7,P_LFOOT=8,P_RKNEE=9,P_RFOOT=10;
+
+const SKINS =['#e8b38c','#c98d63','#8d5a3b','#f2ceab','#6d4a33'];
+const SHIRTS=['#3f6fa8','#a8443f','#3f8a63','#6a4a8a','#b0872f','#48555f'];
+const PANTS =['#2d3a4a','#3a3f4a','#4a3a2d','#25303c'];
+
+function makePoint(x,y,r,hp,part,i){
+  return {x,y,ox:x,oy:y,r,hp,maxhp:hp,part,i,bleed:0,char:0,melt:0,gone:false,
+          grabbed:false,tx:0,ty:0,isPoint:true,pin:null,hitT:0};
+}
+
+function spawnRagdoll(wx,wy,opt){
+  opt=opt||{};
+  if(ragdolls.length>=MAXRAG){
+    const old=ragdolls.shift();
+    for(const p of old.pts) if(p.grabbed) p.grabbed=false;
+  }
+  const L=[
+    [ 0,  -10.5, 4.2, 30,'head'],
+    [ 0,    0,   3.6, 46,'chest'],
+    [ 0,    7.5, 3.4, 40,'pelvis'],
+    [-6,    1.5, 2.2, 16,'arm'],
+    [-9,    7.5, 2.0, 12,'hand'],
+    [ 6,    1.5, 2.2, 16,'arm'],
+    [ 9,    7.5, 2.0, 12,'hand'],
+    [-2.6, 14.5, 2.4, 20,'leg'],
+    [-3,   21.5, 2.2, 16,'foot'],
+    [ 2.6, 14.5, 2.4, 20,'leg'],
+    [ 3,   21.5, 2.2, 16,'foot']
+  ];
+  const pts=L.map((d,i)=>makePoint(wx+d[0],wy+d[1],d[2],d[3],d[4],i));
+  const link=(a,b,kind,w,hp,sever,stiff)=>({
+    a,b,kind,w,hp,maxhp:hp,sever:sever!==false,stiff:stiff||1,cut:false,
+    len:Math.hypot(pts[b].x-pts[a].x,pts[b].y-pts[a].y)
+  });
+  const links=[
+    link(P_HEAD ,P_CHEST,'neck' ,3.6,26,true),
+    link(P_CHEST,P_PELV ,'spine',8.4,60,true,1),
+    link(P_CHEST,P_LELB ,'uarm' ,3.4,20,true),
+    link(P_LELB ,P_LHAND,'farm' ,2.8,16,true),
+    link(P_CHEST,P_RELB ,'uarm' ,3.4,20,true),
+    link(P_RELB ,P_RHAND,'farm' ,2.8,16,true),
+    link(P_PELV ,P_LKNEE,'thigh',4.2,24,true),
+    link(P_LKNEE,P_LFOOT,'shin' ,3.4,20,true),
+    link(P_PELV ,P_RKNEE,'thigh',4.2,24,true),
+    link(P_RKNEE,P_RFOOT,'shin' ,3.4,20,true)
+  ];
+  // minimum-distance limits stop limbs folding through the body
+  const limits=[
+    {a:P_HEAD,b:P_PELV,min:15},
+    {a:P_LELB,b:P_RELB,min:8},
+    {a:P_LHAND,b:P_PELV,min:6},
+    {a:P_RHAND,b:P_PELV,min:6},
+    {a:P_LKNEE,b:P_CHEST,min:12},
+    {a:P_RKNEE,b:P_CHEST,min:12},
+    {a:P_LFOOT,b:P_RFOOT,min:2.5}
+  ];
+  const r={
+    pts,links,limits,
+    skin:opt.skin||pick(SKINS), shirt:opt.shirt||pick(SHIRTS), pants:opt.pants||pick(PANTS),
+    alive:opt.dead?false:true, cons:opt.dead?0:1, pain:0, blood:100, burning:0, shock:0,
+    t:rnd(TAU), screamT:0, face:1, gore:0, dead:opt.dead?1:0, limp:!!opt.dead,
+    comp:new Int8Array(11)
+  };
+  recomputePieces(r);
+  // lift out of the ground: a body spawned inside rock would be crushed
+  for(let tries=0;tries<40;tries++){
+    let stuck=0;
+    for(const pt of pts) if(solidPx(pt.x,pt.y)) stuck++;
+    if(!stuck) break;
+    for(const pt of pts){ pt.y-=3; pt.oy-=3; }
+  }
+  ragdolls.push(r);
+  if(opt.vx!==undefined) for(const p of pts){ p.ox=p.x-opt.vx/60; p.oy=p.y-opt.vy/60; }
+  return r;
+}
+
+/* ---- constraints ---- */
+function solveLink(r,l){
+  if(l.cut) return;
+  const a=r.pts[l.a], b=r.pts[l.b];
+  if(a.gone||b.gone){ l.cut=true; return; }
+  const dx=b.x-a.x, dy=b.y-a.y;
+  const d=Math.hypot(dx,dy)||0.0001;
+  if(l.sever&&d>l.len*2.3){ severLink(r,l,true); return; }   // torn apart
+  const k=(d-l.len)/d*0.5*l.stiff;
+  const mx=dx*k, my=dy*k;
+  if(!a.pin){ a.x+=mx; a.y+=my; }
+  if(!b.pin){ b.x-=mx; b.y-=my; }
+}
+function solveLimit(r,lm){
+  const a=r.pts[lm.a], b=r.pts[lm.b];
+  if(a.gone||b.gone) return;
+  if(r.comp[lm.a]!==r.comp[lm.b]) return; // stop pushing pieces that came off
+  const dx=b.x-a.x, dy=b.y-a.y;
+  const d=Math.hypot(dx,dy)||0.0001;
+  if(d>=lm.min) return;
+  const k=(d-lm.min)/d*0.5*0.6;
+  if(!a.pin){ a.x+=dx*k; a.y+=dy*k; }
+  if(!b.pin){ b.x-=dx*k; b.y-=dy*k; }
+}
+/* Label each still-connected piece once per step; constraints and muscles
+   then need only an id comparison instead of a graph walk.                 */
+const pieceStack=new Int8Array(16);
+function recomputePieces(r){
+  const comp=r.comp;
+  comp.fill(-1);
+  let id=0;
+  for(let start=0;start<r.pts.length;start++){
+    if(comp[start]!==-1||r.pts[start].gone) continue;
+    let sp=0;
+    pieceStack[sp++]=start; comp[start]=id;
+    while(sp>0){
+      const cur=pieceStack[--sp];
+      for(const l of r.links){
+        if(l.cut) continue;
+        const other=l.a===cur?l.b:(l.b===cur?l.a:-1);
+        if(other<0||comp[other]!==-1||r.pts[other].gone) continue;
+        comp[other]=id; pieceStack[sp++]=other;
+      }
+    }
+    id++;
+  }
+}
+function linkedTo(r,i,j){ return r.comp[i]>=0&&r.comp[i]===r.comp[j]; }
+
+/* ---- point vs world ---- */
+function collideRagPoint(r,p){
+  const fl=matAtPx(p.x,p.y);
+  const M=MAT[fl];
+
+  if(fl===LAVA){ igniteRag(r,1); damagePoint(r,p,2.2,'burn'); }
+  else if(fl===FIRE) igniteRag(r,.6);
+  else if(fl===WATER){ r.burning=Math.max(0,r.burning-.08); }
+  else if(M.acid){
+    p.melt=Math.min(p.r*0.92,p.melt+.06);
+    damagePoint(r,p,1.1,'acid');
+    if(p.melt>=p.r*0.9&&!p.gone){ dissolvePoint(r,p); return; }
+    if(Math.random()<.25) puff(p.x,p.y,'#b6f03a',rnd(20,-20),rnd(-10,-30),.5);
+  }
+
+  // buoyancy / drag in fluids
+  if(M.liquid){
+    const vx=(p.x-p.ox)*0.86, vy=(p.y-p.oy)*0.86;
+    p.ox=p.x-vx; p.oy=p.y-vy;
+    p.y-=GRAVITY/3600*(fl===WATER?0.72:0.6);
+  }
+
+  const vy0=p.y-p.oy, vx0=p.x-p.ox;
+  let hit=0, hitSpeed=0, spiked=false;
+
+  // resolve against the four neighbouring cells
+  for(let pass=0;pass<2;pass++){
+    if(solidPx(p.x,p.y+p.r)){
+      const ty=((p.y+p.r)/TS)|0;
+      if(MAT[get((p.x/TS)|0,ty)].spike) spiked=true;
+      p.y=ty*TS-p.r-0.01; hit=1; hitSpeed=Math.max(hitSpeed,vy0);
+      p.oy=p.y+ (p.y-p.oy>0?0:0);
+      p.oy=p.y; p.ox=p.x-vx0*0.55;                 // floor friction
+    }
+    if(solidPx(p.x,p.y-p.r)){
+      const ty=((p.y-p.r)/TS)|0;
+      if(MAT[get((p.x/TS)|0,ty)].spike) spiked=true;
+      p.y=(ty+1)*TS+p.r+0.01; p.oy=p.y; hit=1; hitSpeed=Math.max(hitSpeed,-vy0);
+    }
+    if(solidPx(p.x+p.r,p.y)){
+      const tx=((p.x+p.r)/TS)|0;
+      if(MAT[get(tx,(p.y/TS)|0)].spike) spiked=true;
+      p.x=tx*TS-p.r-0.01; p.ox=p.x; hit=1; hitSpeed=Math.max(hitSpeed,vx0);
+    }
+    if(solidPx(p.x-p.r,p.y)){
+      const tx=((p.x-p.r)/TS)|0;
+      if(MAT[get(tx,(p.y/TS)|0)].spike) spiked=true;
+      p.x=(tx+1)*TS+p.r+0.01; p.ox=p.x; hit=1; hitSpeed=Math.max(hitSpeed,-vx0);
+    }
+  }
+
+  // properly buried, and for more than an instant
+  if(solidPx(p.x,p.y)&&solidPx(p.x+p.r,p.y)&&solidPx(p.x-p.r,p.y)
+     &&solidPx(p.x,p.y+p.r)&&solidPx(p.x,p.y-p.r)){
+    p.crush=(p.crush||0)+1;
+    if(p.crush>12){
+      damagePoint(r,p,3.2,'crush');
+      if(Math.random()<.2) stainPx(p.x,p.y,24);
+      if(p.hp<-14&&!p.gone) gibPoint(r,p,'crush');
+    }
+  } else p.crush=0;
+
+  if(hit&&hitSpeed>4.2){
+    const d=(hitSpeed-4.2)*7.5;
+    damagePoint(r,p,d,'impact');
+    if(d>14){
+      Audio2.thud(p.x,p.y,d/60);
+      if(d>26) Audio2.crunch(p.x,p.y);
+      for(let i=0;i<Math.min(9,d/4);i++) puff(p.x,p.y,'#8d0f16',rnd(60,-60),rnd(-40,-90),.5);
+      stainPx(p.x,p.y+p.r+1,d*1.6);
+    }
+  }
+  if(spiked){
+    // walking onto spikes hurts; being thrown onto them is fatal
+    const pierce=11+Math.max(0,hitSpeed)*7;
+    damagePoint(r,p,pierce,'spike');
+    p.bleed=Math.min(1.8,p.bleed+0.3);
+    bleedBurst(p,pierce>30?9:3,'#8d0f16');
+    stainPx(p.x,p.y+p.r,30+pierce);
+    if(pierce>26) Audio2.squelch(p.x,p.y);
+    // only a body that has stopped moving stays hanging on the points
+    if(p.hp<=0&&!p.pin&&Math.abs(hitSpeed)<6) p.pin={x:p.x,y:p.y};
+  }
+  p.x=clamp(p.x,2,WW*TS-2);
+  p.y=Math.min(p.y,WH*TS-2);
+}
+
+/* ---- per-frame ---- */
+function stepRagdolls(dt){
+  const g=GRAVITY/3600;
+  for(let ri=ragdolls.length-1;ri>=0;ri--){
+    const r=ragdolls[ri];
+    r.t+=dt;
+    r.screamT-=dt;
+    if(r.pain>0) r.pain-=dt*0.6;
+
+    // burning eats away at the body and chars it
+    if(r.burning>0){
+      r.burning-=dt*0.14;
+      for(const p of r.pts){
+        if(p.gone) continue;
+        p.char=Math.min(1,p.char+dt*0.34);
+        damagePoint(r,p,dt*5.5,'burn');
+        if(Math.random()<dt*7) puff(p.x,p.y-2,Math.random()<.5?'#ffb03a':'#ff6a1e',rnd(14,-14),rnd(-40,-80),.5);
+        if(Math.random()<dt*0.5&&MAT[matAtPx(p.x,p.y)].flam) setTile((p.x/TS)|0,(p.y/TS)|0,FIRE);
+      }
+      if(r.alive&&Math.random()<dt*2.2) scream(r,.7);
+    }
+    // electricity: muscles seize and fire off in all directions
+    if(r.shock>0){
+      r.shock-=dt;
+      for(const p of r.pts){
+        if(p.gone) continue;
+        p.x+=rnd(1.4,-1.4); p.y+=rnd(1.4,-1.4);
+        damagePoint(r,p,dt*7,'shock');
+        p.char=Math.min(1,p.char+dt*0.12);
+      }
+      if(Math.random()<dt*9) Audio2.zap(r.pts[P_CHEST].x,r.pts[P_CHEST].y);
+      if(r.alive&&Math.random()<dt*2) scream(r,1);
+    }
+
+    // bleeding out
+    let bleedRate=0;
+    for(const p of r.pts) if(!p.gone) bleedRate+=p.bleed;
+    if(bleedRate>0){
+      r.blood=Math.max(0,r.blood-bleedRate*dt*3.4);
+      for(const p of r.pts){
+        if(p.gone||p.bleed<=0) continue;
+        p.bleed=Math.max(0,p.bleed-dt*0.02);
+        if(Math.random()<dt*p.bleed*10){
+          const spurt=r.alive?1.7:0.5;
+          const a=Math.atan2(p.y-r.pts[P_CHEST].y,p.x-r.pts[P_CHEST].x)+rnd(.8,-.8);
+          bleedDrop(p.x,p.y,Math.cos(a)*40*spurt+rnd(30,-30),Math.sin(a)*40*spurt+rnd(10,-40));
+        }
+      }
+      if(r.blood<=0&&r.alive) killRagdoll(r,'bled out');
+    }
+
+    recomputePieces(r);
+
+    // muscles: hold yourself up while you still can
+    if(r.alive&&r.cons>0.05&&!r.limp) ragMuscles(r,dt);
+
+    // integrate
+    for(const p of r.pts){
+      if(p.gone) continue;
+      if(p.pin){ p.x=p.pin.x; p.y=p.pin.y; p.ox=p.x; p.oy=p.y; continue; }
+      if(p.grabbed){
+        const k=0.42;
+        p.x+=(p.tx-p.x)*k; p.y+=(p.ty-p.y)*k;
+        p.ox=lerp(p.ox,p.x,0.35); p.oy=lerp(p.oy,p.y,0.35);
+        continue;
+      }
+      const drag=0.997;
+      let vx=(p.x-p.ox)*drag, vy=(p.y-p.oy)*drag;
+      vx=clamp(vx,-14,14); vy=clamp(vy,-16,16);
+      p.ox=p.x; p.oy=p.y;
+      p.x+=vx; p.y+=vy+g;
+    }
+    // constraints, then the world
+    for(let it=0;it<4;it++){
+      for(const l of r.links) solveLink(r,l);
+      for(const lm of r.limits) solveLimit(r,lm);
+    }
+    for(const p of r.pts){ if(!p.gone) collideRagPoint(r,p); }
+
+    // vitals
+    const head=r.pts[P_HEAD], chest=r.pts[P_CHEST];
+    if(r.alive){
+      const vital=(head.gone?0:head.hp)+(chest.gone?0:chest.hp);
+      r.cons=clamp(Math.min(1,vital/60)*clamp(r.blood/45,0,1)-r.pain*0.25,0,1);
+      if(head.gone||chest.gone||head.hp<=0||chest.hp<=0) killRagdoll(r,'trauma');
+    } else {
+      r.dead+=dt;
+    }
+    r.face=chest.x>r.pts[P_PELV].x?1:-1;
+
+    // fully dismantled bodies stop being tracked
+    let left=0;
+    for(const p of r.pts) if(!p.gone) left++;
+    if(left===0) ragdolls.splice(ri,1);
+  }
+}
+
+/* While conscious, a body is driven toward a standing pose anchored on
+   whichever feet are still attached and on the ground. Consciousness scales
+   the whole thing, so injury makes them sag and death drops them limp.     */
+function ragMuscles(r,dt){
+  const c=r.cons, pts=r.pts;
+  const chest=pts[P_CHEST], pelv=pts[P_PELV];
+  if(pelv.gone&&chest.gone) return;
+
+  // pose corrections are mostly kinematic, and they bleed off the velocity
+  // gravity keeps adding — otherwise the body jitters and takes fake impacts
+  const nudge=(p,tx,ty,k)=>{
+    if(!p||p.gone||p.pin||p.grabbed) return;
+    const dx=(tx-p.x)*k, dy=(ty-p.y)*k;
+    p.x+=dx; p.y+=dy;
+    p.ox+=dx; p.oy+=dy;
+    p.ox=lerp(p.ox,p.x,0.10*c);
+    p.oy=lerp(p.oy,p.y,0.10*c);
+  };
+
+  // root: stand on the feet that are still attached and touching something
+  const footIdx=[P_LFOOT,P_RFOOT].filter(i=>!pts[i].gone&&linkedTo(r,P_PELV,i));
+  let rootX=pelv.gone?chest.x:pelv.x, rootY=pelv.gone?chest.y+7.5:pelv.y, grounded=false;
+  if(footIdx.length){
+    let fx=0,fy=0;
+    for(const i of footIdx){ fx+=pts[i].x; fy+=pts[i].y; }
+    fx/=footIdx.length; fy/=footIdx.length;
+    for(const i of footIdx) if(solidPx(pts[i].x,pts[i].y+pts[i].r+1)) grounded=true;
+    if(grounded){ rootX=fx; rootY=fy-14; }
+  }
+  const stand=grounded?1:0.35;      // in the air you can only tuck up
+  const k=0.3*c*stand;
+
+  nudge(pelv,rootX,rootY,k*0.8);
+  nudge(chest,rootX,rootY-7.5,k);
+  nudge(pts[P_HEAD],rootX,rootY-18,k);
+  nudge(pts[P_LELB],rootX-6,rootY-6,k*0.55);
+  nudge(pts[P_RELB],rootX+6,rootY-6,k*0.55);
+  nudge(pts[P_LHAND],rootX-8,rootY+0.5,k*0.45);
+  nudge(pts[P_RHAND],rootX+8,rootY+0.5,k*0.45);
+  nudge(pts[P_LKNEE],rootX-2.6,rootY+7,k*0.7);
+  nudge(pts[P_RKNEE],rootX+2.6,rootY+7,k*0.7);
+  if(grounded){
+    nudge(pts[P_LFOOT],rootX-3,rootY+14,k*0.3);
+    nudge(pts[P_RFOOT],rootX+3,rootY+14,k*0.3);
+  }
+
+  // squirming when it hurts
+  if(r.pain>0.2){
+    for(const i of [P_LHAND,P_RHAND,P_LFOOT,P_RFOOT]){
+      const p=pts[i]; if(p.gone||p.grabbed) continue;
+      p.x+=Math.sin(r.t*17+i)*0.6*r.pain; p.y+=Math.cos(r.t*13+i)*0.5*r.pain;
+    }
+  }
+}
+
+/* ---- damage ---- */
+function damagePoint(r,p,dmg,type){
+  if(p.gone||dmg<=0) return;
+  p.hp-=dmg;
+  p.hitT=0.12;
+  if(dmg>2){
+    r.pain=Math.min(1.6,r.pain+dmg*0.02);
+    const bleedPer=type==='burn'?0.003:(type==='impact'||type==='crush'?0.005:
+                   (type==='shock'?0.001:0.016));
+    p.bleed=Math.min(1.5,p.bleed+dmg*bleedPer);
+  }
+  if(r.alive&&dmg>6&&r.screamT<=0) scream(r,clamp(dmg/40,.3,1));
+  if(p.hp<=0){
+    // the joints holding this part give way
+    for(const l of r.links){
+      if(l.cut) continue;
+      if(l.a===p.i||l.b===p.i){
+        l.hp-=dmg*0.8;
+        if(l.hp<=0&&l.sever) severLink(r,l,true);
+      }
+    }
+    if(p.hp<-24&&!p.gone) gibPoint(r,p,type);
+  }
+}
+function hitPointAt(wx,wy,rad){
+  let best=null,bd=rad*rad,br=null;
+  for(const r of ragdolls){
+    for(const p of r.pts){
+      if(p.gone) continue;
+      const dx=p.x-wx, dy=p.y-wy, d2=dx*dx+dy*dy;
+      if(d2<bd){ bd=d2; best=p; br=r; }
+    }
+  }
+  return best?{r:br,p:best}:null;
+}
+
+function severLink(r,l,gore){
+  if(l.cut) return;
+  l.cut=true;
+  recomputePieces(r);
+  const a=r.pts[l.a], b=r.pts[l.b];
+  a.bleed=Math.min(1.8,a.bleed+0.85); b.bleed=Math.min(1.8,b.bleed+0.85);
+  a.wound=b.wound=true;
+  r.gore=Math.min(1,r.gore+0.25);
+  if(gore){
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    bleedBurst({x:mx,y:my},16,'#8d0f16');
+    for(let i=0;i<2;i++) spawnGib(mx,my,rnd(120,-120),rnd(-40,-150),Math.random()<.4?'bone':'flesh');
+    stainPx(mx,my,90);
+    Audio2.squelch(mx,my);
+    if(l.kind==='neck'){ Audio2.crunch(mx,my); if(r.alive) killRagdoll(r,'decapitated'); }
+  }
+  if(l.kind==='spine'&&r.alive) killRagdoll(r,'torn in half');
+}
+
+function gibPoint(r,p,type){
+  if(p.gone) return;
+  p.gone=true;
+  for(const l of r.links) if(!l.cut&&(l.a===p.i||l.b===p.i)) severLink(r,l,false);
+  bleedBurst(p,22,'#8d0f16');
+  for(let i=0;i<3;i++) spawnGib(p.x,p.y,rnd(190,-190),rnd(-60,-210),pick(['flesh','flesh','bone','organ']));
+  if(p.part==='head') spawnGib(p.x,p.y,rnd(120,-120),rnd(-80,-200),'skull');
+  if(p.part==='chest'||p.part==='pelvis'){
+    for(let i=0;i<2;i++) spawnGib(p.x,p.y,rnd(150,-150),rnd(-50,-170),'gut');
+  }
+  stainPx(p.x,p.y,130);
+  Audio2.squelch(p.x,p.y);
+  if((p.part==='head'||p.part==='chest')&&r.alive) killRagdoll(r,'gibbed');
+}
+
+/* acid leaves nothing to bury */
+function dissolvePoint(r,p){
+  if(p.gone) return;
+  p.gone=true;
+  for(const l of r.links) if(!l.cut&&(l.a===p.i||l.b===p.i)) severLink(r,l,false);
+  for(let i=0;i<10;i++) puff(p.x,p.y,Math.random()<.5?'#b6f03a':'#7a0c13',rnd(40,-40),rnd(-20,-60),.8);
+  const tx=(p.x/TS)|0, ty=(p.y/TS)|0;
+  if(getSafe(tx,ty)===AIR) setTile(tx,ty,BLOOD);
+  stainPx(p.x,p.y,80);
+  Audio2.fizz(p.x,p.y);
+  if((p.part==='head'||p.part==='chest')&&r.alive) killRagdoll(r,'dissolved');
+}
+
+function gibRagdoll(r){
+  for(const p of [...r.pts]) if(!p.gone) gibPoint(r,p,'blast');
+}
+
+function killRagdoll(r,how){
+  if(!r.alive) return;
+  r.alive=false; r.cons=0; r.limp=true; r.dead=0;
+  bodyCount++;
+  Audio2.death(r.pts[P_CHEST].x,r.pts[P_CHEST].y);
+}
+
+function igniteRag(r,amt){
+  if(matAtPx(r.pts[P_CHEST].x,r.pts[P_CHEST].y)===WATER) return;
+  r.burning=Math.min(3.2,r.burning+amt);
+}
+function shockRag(r,amt){ r.shock=Math.min(2.6,r.shock+amt); }
+
+function scream(r,intensity){
+  if(!r.alive||r.screamT>0) return;
+  r.screamT=rnd(.85,.35);
+  r.mouth=0.5;
+  Audio2.scream(r.pts[P_HEAD].x,r.pts[P_HEAD].y,intensity,r.pitch||(r.pitch=rnd(1.25,.8)));
+}
+
+/* ---- blood ---- */
+function bleedDrop(x,y,vx,vy){
+  if(particles.length>620) return;
+  particles.push({x,y,vx,vy,col:Math.random()<.25?'#b8161f':'#8d0f16',
+    life:2.4,max:2.4,size:rnd(3.2,1.4),grav:640,blood:1});
+}
+function bleedBurst(p,n,col){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*TAU, s=rnd(230,40);
+    bleedDrop(p.x,p.y,Math.cos(a)*s,Math.sin(a)*s-40);
+  }
+}
+
+/* ---- gore chunks ---- */
+function spawnGib(x,y,vx,vy,type){
+  if(props.length>=MAXPROPS) props.shift();
+  const p={kind:'gib',gib:type,x,y,vx,vy,spin:rnd(9,-9),rot:rnd(TAU),
+           w:type==='gut'?7:(type==='skull'?8:6),h:type==='gut'?5:(type==='skull'?8:6),
+           bounce:type==='bone'?.34:.12,life:0,glow:0,gscale:1,wet:1,
+           col:type==='bone'?'#e8ddc8':(type==='organ'?'#6d1018':(type==='skull'?'#e8ddc8':'#a3161c')),
+           dead:false};
+  props.push(p);
+  return p;
 }
 
 /* ---------- explosions -------------------------------------------------- */
@@ -1701,6 +2948,23 @@ function explode(wx,wy,radTiles){
     b.vx+=dx/d*f; b.vy+=dy/d*f-40/mass;
   };
   for(const p of props){ if(!p.grabbed) push(p,1); if(p.kind==='tnt'&&p.fuse>.25) p.fuse=rnd(.5,.15); }
+  // anyone caught in the blast is thrown, shredded, or simply comes apart
+  for(const rg of ragdolls){
+    for(const p of rg.pts){
+      if(p.gone) continue;
+      const dx=p.x-wx, dy=p.y-wy;
+      const d=Math.max(6,Math.hypot(dx,dy));
+      const reach=r*TS*1.8;
+      if(d>reach) continue;
+      const f=(1-d/reach);
+      applyRagImpulse(p,dx/d*f*1500,dy/d*f*1500-f*220);
+      p.pin=null;
+      damagePoint(rg,p,f*90,'blast');
+      if(d<r*TS*0.55){ gibPoint(rg,p,'blast'); }
+      else if(f>0.5) p.char=Math.min(1,p.char+f*0.5);
+    }
+    if(Math.hypot(rg.pts[P_CHEST].x-wx,rg.pts[P_CHEST].y-wy)<r*TS*0.7) igniteRag(rg,1.2);
+  }
   if(player.dead<=0){
     push(player,1.2);
     const d=Math.hypot(player.x-wx,player.y-wy);
@@ -1749,6 +3013,11 @@ function applyTool(wx,wy,first){
     if(!first&&spawnCd>0) return;
     spawnCd=.12;
     const kind=SPAWNABLES[spawnSel].key;
+    if(kind==='human'){
+      spawnRagdoll(wx,wy-10);
+      Audio2.blip();
+      return;
+    }
     const p=spawnProp(kind,wx,wy);
     burst(wx,wy,p.col,8,90,.4);
     Audio2.place(wx,wy);
@@ -1761,6 +3030,15 @@ function applyTool(wx,wy,first){
 
 function grabAt(wx,wy){
   let best=null,bd=1e9;
+  // limbs first: dragging people around is the whole point
+  for(const r of ragdolls){
+    for(const p of r.pts){
+      if(p.gone) continue;
+      const d=Math.hypot(p.x-wx,p.y-wy);
+      if(d<bd&&d<18){ bd=d; best=p; }
+    }
+  }
+  if(best){ best.grabbed=true; best.pin=null; best.tx=wx; best.ty=wy; Audio2.blip(); return best; }
   for(const p of props){
     const d=Math.hypot(p.x-wx,p.y-wy);
     if(d<bd&&d<Math.max(26,p.w)) { bd=d; best=p; }
@@ -1806,10 +3084,12 @@ cvs.addEventListener('pointerdown',e=>{
   if(e.button===1){ pinch=null; stroke={id:e.pointerId,pan:true,wx:screenToWorldX(p.x),wy:screenToWorldY(p.y)}; cam.follow=false; return; }
 
   const wx=screenToWorldX(p.x), wy=screenToWorldY(p.y);
-  stroke={id:e.pointerId,tool};
+  stroke={id:e.pointerId,tool,px:wx,py:wy};
   if(tool==='grab'){
     const g=grabAt(wx,wy);
     if(g) stroke.grabbed=g;
+  } else if(tool==='weapon'){
+    fireWeapon(wx,wy,true,wx,wy);
   } else applyTool(wx,wy,true);
 },{passive:false});
 
@@ -1842,6 +3122,7 @@ cvs.addEventListener('pointermove',e=>{
   }
   const wx=screenToWorldX(p.x), wy=screenToWorldY(p.y);
   if(stroke.grabbed){ stroke.grabbed.tx=wx; stroke.grabbed.ty=wy; return; }
+  if(stroke.tool==='weapon') return;      // the loop keeps firing while held
   if(stroke.tool==='build'||stroke.tool==='dig'||stroke.tool==='spawn') applyTool(wx,wy,false);
 },{passive:false});
 
@@ -1849,7 +3130,13 @@ function releaseGrab(){
   if(stroke&&stroke.grabbed){
     const g=stroke.grabbed;
     g.grabbed=false;
-    g.vx=clamp(g.vx,-560,560); g.vy=clamp(g.vy,-560,560);
+    if(g.isPoint){
+      // keep the throw, but do not let verlet explode
+      const vx=clamp(g.x-g.ox,-13,13), vy=clamp(g.y-g.oy,-13,13);
+      g.ox=g.x-vx; g.oy=g.y-vy;
+    } else {
+      g.vx=clamp(g.vx,-560,560); g.vy=clamp(g.vy,-560,560);
+    }
     stroke.grabbed=null;
   }
 }
@@ -1925,12 +3212,13 @@ addEventListener('keydown',e=>{
   if(e.code==='Digit2') setTool('dig');
   if(e.code==='Digit3') setTool('spawn');
   if(e.code==='Digit4') setTool('grab');
+  if(e.code==='Digit5') setTool('weapon');
   if(e.code==='KeyR'){ cam.follow=true; }
   if(e.code==='KeyQ'||e.code==='KeyE'){
-    const list=tool==='spawn'?SPAWNABLES:PALETTE;
-    const cur=tool==='spawn'?spawnSel:PALETTE.indexOf(matSel);
-    let n=(cur+(e.code==='KeyE'?1:-1)+list.length)%list.length;
-    if(tool==='spawn') spawnSel=n; else matSel=PALETTE[n];
+    const list=tool==='weapon'?WEAPONS:(tool==='spawn'?SPAWNABLES:PALETTE);
+    const cur=tool==='weapon'?weapSel:(tool==='spawn'?spawnSel:PALETTE.indexOf(matSel));
+    const n=(cur+(e.code==='KeyE'?1:-1)+list.length)%list.length;
+    if(tool==='weapon') weapSel=n; else if(tool==='spawn') spawnSel=n; else matSel=PALETTE[n];
     buildPalette();
   }
   if(e.code==='KeyF') toggleFly();
@@ -1961,14 +3249,18 @@ const roTool=document.getElementById('roTool'), roMat=document.getElementById('r
 
 function buildPalette(){
   paletteEl.innerHTML='';
-  if(tool==='spawn'){
+  if(tool==='weapon'){
+    WEAPONS.forEach((w,i)=>{
+      paletteEl.appendChild(chip(w.col,w.name,i===weapSel,()=>{ weapSel=i; buildPalette(); updateReadout(); }));
+    });
+  } else if(tool==='spawn'){
     SPAWNABLES.forEach((s,i)=>{
       paletteEl.appendChild(chip(s.col,s.name,i===spawnSel,()=>{ spawnSel=i; buildPalette(); updateReadout(); }));
     });
   } else if(tool==='grab'){
     const note=document.createElement('div');
     note.style.cssText='font-size:11px;letter-spacing:2px;color:#6d7c88;padding:8px 10px;white-space:nowrap';
-    note.textContent='DRAG PROPS · FLING TO THROW';
+    note.textContent='DRAG LIMBS AND PROPS · FLING TO THROW';
     paletteEl.appendChild(note);
   } else {
     PALETTE.forEach(m=>{
@@ -2002,8 +3294,9 @@ sizeBtn.addEventListener('click',()=>{
 });
 function updateReadout(){
   roTool.textContent=tool.toUpperCase();
-  roMat.textContent=tool==='spawn'?SPAWNABLES[spawnSel].name.toUpperCase():
-                    (tool==='grab'?'—':MAT[matSel].name.toUpperCase());
+  roMat.textContent=tool==='weapon'?WEAPONS[weapSel].name.toUpperCase():
+                    (tool==='spawn'?SPAWNABLES[spawnSel].name.toUpperCase():
+                    (tool==='grab'?'—':MAT[matSel].name.toUpperCase()));
 }
 let toastT=0;
 function toast(msg){
@@ -2025,11 +3318,14 @@ document.getElementById('camBtn').addEventListener('click',()=>{ cam.follow=true
 document.getElementById('newBtn').addEventListener('click',()=>{
   const s=document.getElementById('seedInput').value.trim();
   generate(s||('lot'+rndi(99999)));
-  resetPlayer(); props.length=0;
+  resetPlayer(); props.length=0; ragdolls.length=0; bullets.length=0; bodyCount=0;
   sheet.classList.remove('open');
   toast('NEW WORLD · '+worldSeed);
 });
-document.getElementById('clearBtn').addEventListener('click',()=>{ props.length=0; toast('PROPS CLEARED'); });
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  props.length=0; ragdolls.length=0; bullets.length=0; particles.length=0;
+  toast('CLEARED');
+});
 document.getElementById('saveBtn').addEventListener('click',()=>{ saveWorld(); });
 document.getElementById('loadBtn').addEventListener('click',()=>{ loadWorld(); sheet.classList.remove('open'); });
 
@@ -2073,14 +3369,18 @@ flyBtn.addEventListener('click',toggleFly);
 /* ---------- save / load ------------------------------------------------- */
 function saveWorld(){
   try{
-    const out=[]; let run=1;
-    for(let i=1;i<=tiles.length;i++){
-      if(i<tiles.length&&tiles[i]===tiles[i-1]&&run<46000) run++;
-      else { out.push(tiles[i-1].toString(36)+'.'+run.toString(36)); run=1; }
-    }
+    const rle=(arr,quant)=>{
+      const out=[]; let run=1;
+      const q=v=>quant?(v>>4):v;              // stains keep 4 bits of depth
+      for(let i=1;i<=arr.length;i++){
+        if(i<arr.length&&q(arr[i])===q(arr[i-1])&&run<46000) run++;
+        else { out.push(q(arr[i-1]).toString(36)+'.'+run.toString(36)); run=1; }
+      }
+      return out.join(',');
+    };
     localStorage.setItem('sandlot_world',JSON.stringify({
-      v:1,seed:worldSeed,w:WW,h:WH,day:dayT,px:player.x,py:player.y,
-      t:out.join(','),
+      v:2,seed:worldSeed,w:WW,h:WH,day:dayT,px:player.x,py:player.y,
+      t:rle(tiles,false), bl:rle(stain,true),
       props:props.slice(0,60).map(p=>[p.kind,Math.round(p.x),Math.round(p.y)])
     }));
     toast('WORLD SAVED');
@@ -2098,12 +3398,23 @@ function loadWorld(){
       const mv=parseInt(m,36), nv=parseInt(n,36);
       for(let k=0;k<nv&&i<tiles.length;k++) tiles[i++]=mv;
     }
+    stain.fill(0);
+    if(d.bl){
+      let j=0;
+      for(const part of d.bl.split(',')){
+        const [v,n]=part.split('.');
+        const vv=parseInt(v,36)<<4, nv=parseInt(n,36);
+        for(let k=0;k<nv&&j<stain.length;k++) stain[j++]=vv;
+      }
+    }
     worldSeed=d.seed||worldSeed;
     dayT=d.day!==undefined?d.day:dayT;
     timeRange.value=Math.round(dayT*1000);
     for(let x=0;x<WW;x++){ surfaceY[x]=groundY(x); }
+    const keepStain=stain.slice();
     afterWorldChange();
-    props.length=0;
+    stain.set(keepStain);                 // the blood survives the reload
+    props.length=0; ragdolls.length=0; bullets.length=0;
     (d.props||[]).forEach(([k,x,y])=>spawnProp(k,x,y));
     player.x=d.px||player.x; player.y=d.py||player.y; player.vx=player.vy=0;
     cam.x=player.x; cam.y=player.y; cam.follow=true;
@@ -2178,6 +3489,26 @@ function drawUnderground(){
 
 function drawCursor(){
   if(tool==='grab') return;
+  if(tool==='weapon'){
+    if(!(stroke&&pointers.has(stroke.id))&&!(hover.on&&!('ontouchstart' in window))) return;
+    let cx,cy;
+    if(stroke&&pointers.has(stroke.id)){ const p=pointers.get(stroke.id); cx=p.x; cy=p.y; }
+    else { cx=worldToScreenX(hover.x); cy=worldToScreenY(hover.y); }
+    const o=weaponOrigin();
+    ctx.save();
+    ctx.strokeStyle='rgba(255,95,95,.55)';
+    ctx.setLineDash([5,7]); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(worldToScreenX(o.x),worldToScreenY(o.y)); ctx.lineTo(cx,cy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle='rgba(255,95,95,.95)'; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(cx,cy,9,0,TAU); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx-14,cy); ctx.lineTo(cx-5,cy); ctx.moveTo(cx+5,cy); ctx.lineTo(cx+14,cy);
+    ctx.moveTo(cx,cy-14); ctx.lineTo(cx,cy-5); ctx.moveTo(cx,cy+5); ctx.lineTo(cx,cy+14);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   let wx,wy,show=false;
   if(stroke&&!stroke.pan&&pointers.has(stroke.id)){
     const p=pointers.get(stroke.id);
@@ -2289,9 +3620,21 @@ function frame(now){
     dayT=(dayT+FIXED/240)%1;            // 4 minute day
     if(frameCount%8===0&&!sheet.classList.contains('open')) timeRange.value=Math.round(dayT*1000);
     spawnCd-=FIXED;
+    fireCd-=FIXED;
+    muzzle=Math.max(0,muzzle-FIXED*7);
+    beamOn=false;
+    if(stroke&&stroke.tool==='weapon'&&pointers.has(stroke.id)){
+      const pt=pointers.get(stroke.id);
+      const fwx=screenToWorldX(pt.x), fwy=screenToWorldY(pt.y);
+      fireWeapon(fwx,fwy,false,stroke.px,stroke.py);
+      stroke.px=fwx; stroke.py=fwy;
+    }
     stepSim();
     stepSim();                          // two cellular passes per frame: livelier fluids
     stepPlayer(FIXED);
+    stepRagdolls(FIXED);
+    stepBullets(FIXED);
+    stepBeam(FIXED);
     stepProps(FIXED);
     stepParticles(FIXED);
     stepWeather(FIXED);
@@ -2314,9 +3657,11 @@ function frame(now){
   drawUnderground();
   drawWorld();
   drawProps();
+  drawRagdolls();
   drawPlayer();
   drawParticles();
   drawLight(sk);
+  drawWeaponFx();
   drawCursor();
   drawOverlays(sk);
   ctx.restore();
@@ -2326,7 +3671,7 @@ function frame(now){
   statT+=dt;
   if(statT>0.25){
     statT=0;
-    roStats.textContent=fpsShown+' FPS · '+props.length+' PROPS · '+
+    roStats.textContent=fpsShown+' FPS · '+ragdolls.length+' BODIES · '+bodyCount+' KILLED · '+
       (dayT<0.25?'NIGHT':dayT<0.35?'DAWN':dayT<0.7?'DAY':dayT<0.82?'DUSK':'NIGHT');
   }
 }
@@ -2339,8 +3684,10 @@ function boot(){
   resetPlayer();
   setTool('build');
   sizeLabel.textContent='R'+brush;
-  // a few toys to start with
-  for(let i=0;i<4;i++) spawnProp(pick(['ball','crate','balloon','blob']),player.x+rnd(90,-90),player.y-60);
+  // a few toys and a couple of volunteers
+  for(let i=0;i<3;i++) spawnProp(pick(['ball','crate','balloon']),player.x+rnd(90,-90),player.y-60);
+  spawnRagdoll(player.x+46,player.y-24);
+  spawnRagdoll(player.x-52,player.y-24);
   requestAnimationFrame(frame);
 }
 addEventListener('resize',()=>{ resize(); clampCam(); });
